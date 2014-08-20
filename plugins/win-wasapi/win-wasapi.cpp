@@ -124,14 +124,14 @@ inline WASAPISource::~WASAPISource()
 
 void WASAPISource::UpdateSettings(obs_data_t settings)
 {
-	device_id       = obs_data_getstring(settings, OPT_DEVICE_ID);
-	useDeviceTiming = obs_data_getbool(settings, OPT_USE_DEVICE_TIMING);
+	device_id       = obs_data_get_string(settings, OPT_DEVICE_ID);
+	useDeviceTiming = obs_data_get_bool(settings, OPT_USE_DEVICE_TIMING);
 	isDefaultDevice = _strcmpi(device_id.c_str(), "default") == 0;
 }
 
 void WASAPISource::Update(obs_data_t settings)
 {
-	string newDevice = obs_data_getstring(settings, OPT_DEVICE_ID);
+	string newDevice = obs_data_get_string(settings, OPT_DEVICE_ID);
 	bool restart = newDevice.compare(device_id) != 0;
 
 	if (restart)
@@ -357,13 +357,13 @@ bool WASAPISource::ProcessCaptureData()
 			return false;
 		}
 
-		source_audio data    = {};
-		data.data[0]         = (const uint8_t*)buffer;
-		data.frames          = (uint32_t)frames;
-		data.speakers        = speakers;
-		data.samples_per_sec = sampleRate;
-		data.format          = format;
-		data.timestamp       = useDeviceTiming ?
+		obs_source_audio data = {};
+		data.data[0]          = (const uint8_t*)buffer;
+		data.frames           = (uint32_t)frames;
+		data.speakers         = speakers;
+		data.samples_per_sec  = sampleRate;
+		data.format           = format;
+		data.timestamp        = useDeviceTiming ?
 			ts*100 : os_gettime_ns();
 
 		obs_source_output_audio(source, &data);
@@ -512,12 +512,12 @@ void RegisterWASAPIInput()
 	info.id              = "wasapi_input_capture";
 	info.type            = OBS_SOURCE_TYPE_INPUT;
 	info.output_flags    = OBS_SOURCE_AUDIO;
-	info.getname         = GetWASAPIInputName;
+	info.get_name        = GetWASAPIInputName;
 	info.create          = CreateWASAPIInput;
 	info.destroy         = DestroyWASAPISource;
 	info.update          = UpdateWASAPISource;
-	info.defaults        = GetWASAPIDefaults;
-	info.properties      = GetWASAPIPropertiesInput;
+	info.get_defaults    = GetWASAPIDefaults;
+	info.get_properties  = GetWASAPIPropertiesInput;
 	obs_register_source(&info);
 }
 
@@ -527,11 +527,11 @@ void RegisterWASAPIOutput()
 	info.id              = "wasapi_output_capture";
 	info.type            = OBS_SOURCE_TYPE_INPUT;
 	info.output_flags    = OBS_SOURCE_AUDIO;
-	info.getname         = GetWASAPIOutputName;
+	info.get_name        = GetWASAPIOutputName;
 	info.create          = CreateWASAPIOutput;
 	info.destroy         = DestroyWASAPISource;
 	info.update          = UpdateWASAPISource;
-	info.defaults        = GetWASAPIDefaults;
-	info.properties      = GetWASAPIPropertiesOutput;
+	info.get_defaults    = GetWASAPIDefaults;
+	info.get_properties  = GetWASAPIPropertiesOutput;
 	obs_register_source(&info);
 }

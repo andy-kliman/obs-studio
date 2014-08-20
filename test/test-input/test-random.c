@@ -53,7 +53,7 @@ static void *video_thread(void *data)
 	uint32_t            pixels[20*20];
 	uint64_t            cur_time = os_gettime_ns();
 
-	struct source_frame frame = {
+	struct obs_source_frame frame = {
 		.data     = {[0] = (uint8_t*)pixels},
 		.linesize = {[0] = 20*4},
 		.width    = 20,
@@ -100,7 +100,7 @@ struct obs_source_info test_random = {
 	.id           = "random",
 	.type         = OBS_SOURCE_TYPE_INPUT,
 	.output_flags = OBS_SOURCE_ASYNC_VIDEO,
-	.getname      = random_getname,
+	.get_name     = random_getname,
 	.create       = random_create,
 	.destroy      = random_destroy,
 };

@@ -49,6 +49,9 @@ struct ffmpeg_data {
 	int                frame_size;
 	int                total_frames;
 
+	int                width;
+	int                height;
+
 	uint64_t           start_timestamp;
 
 	int                audio_bitrate;
@@ -185,8 +188,8 @@ static bool create_video_stream(struct ffmpeg_data *data)
 	context->bit_rate       = data->video_bitrate * 1000;
 	context->rc_buffer_size = data->video_bitrate * 1000;
 	context->rc_max_rate    = data->video_bitrate * 1000;
-	context->width          = ovi.output_width;
-	context->height         = ovi.output_height;
+	context->width          = data->width;
+	context->height         = data->height;
 	context->time_base.num  = ovi.fps_den;
 	context->time_base.den  = ovi.fps_num;
 	context->gop_size       = 120;
@@ -348,7 +351,7 @@ static void ffmpeg_data_free(struct ffmpeg_data *data)
 }
 
 static bool ffmpeg_data_init(struct ffmpeg_data *data, const char *filename,
-		int vbitrate, int abitrate)
+		int vbitrate, int abitrate, int width, int height)
 {
 	bool is_rtmp = false;
 
@@ -356,6 +359,8 @@ static bool ffmpeg_data_init(struct ffmpeg_data *data, const char *filename,
 	data->filename_test = filename;
 	data->video_bitrate = vbitrate;
 	data->audio_bitrate = abitrate;
+	data->width         = width;
+	data->height        = height;
 
 	if (!filename || !*filename)
 		return false;
@@ -711,19 +716,24 @@ static bool try_connect(struct ffmpeg_output *output)
 	const char *filename_test;
 	obs_data_t settings;
 	int audio_bitrate, video_bitrate;
+	int width, height;
 	int ret;
 
 	settings = obs_output_get_settings(output->output);
-	filename_test = obs_data_getstring(settings, "filename");
-	video_bitrate = (int)obs_data_getint(settings, "video_bitrate");
-	audio_bitrate = (int)obs_data_getint(settings, "audio_bitrate");
+	filename_test = obs_data_get_string(settings, "filename");
+	video_bitrate = (int)obs_data_get_int(settings, "video_bitrate");
+	audio_bitrate = (int)obs_data_get_int(settings, "audio_bitrate");
 	obs_data_release(settings);
 
 	if (!filename_test || !*filename_test)
 		return false;
 
+	width  = (int)obs_output_get_width(output->output);
+	height = (int)obs_output_get_height(output->output);
+
 	if (!ffmpeg_data_init(&output->ff_data, filename_test,
-				video_bitrate, audio_bitrate))
+				video_bitrate, audio_bitrate,
+				width, height))
 		return false;
 
 	struct audio_convert_info aci = {
@@ -807,7 +817,7 @@ static void ffmpeg_output_stop(void *data)
 struct obs_output_info ffmpeg_output = {
 	.id        = "ffmpeg_output",
 	.flags     = OBS_OUTPUT_AUDIO | OBS_OUTPUT_VIDEO,
-	.getname   = ffmpeg_output_getname,
+	.get_name  = ffmpeg_output_getname,
 	.create    = ffmpeg_output_create,
 	.destroy   = ffmpeg_output_destroy,
 	.start     = ffmpeg_output_start,

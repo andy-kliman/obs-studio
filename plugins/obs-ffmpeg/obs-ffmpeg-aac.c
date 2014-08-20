@@ -114,7 +114,7 @@ static void init_sizes(struct aac_encoder *enc, audio_t audio)
 	const struct audio_output_info *aoi;
 	enum audio_format format;
 
-	aoi    = audio_output_getinfo(audio);
+	aoi    = audio_output_get_info(audio);
 	format = convert_ffmpeg_sample_format(enc->context->sample_fmt);
 
 	enc->audio_planes = get_audio_planes(format, aoi->speakers);
@@ -124,7 +124,7 @@ static void init_sizes(struct aac_encoder *enc, audio_t audio)
 static void *aac_create(obs_data_t settings, obs_encoder_t encoder)
 {
 	struct aac_encoder *enc;
-	int                bitrate = (int)obs_data_getint(settings, "bitrate");
+	int                bitrate = (int)obs_data_get_int(settings, "bitrate");
 	audio_t            audio   = obs_encoder_audio(encoder);
 
 	if (!bitrate) {
@@ -151,8 +151,8 @@ static void *aac_create(obs_data_t settings, obs_encoder_t encoder)
 	}
 
 	enc->context->bit_rate    = bitrate * 1000;
-	enc->context->channels    = (int)audio_output_channels(audio);
-	enc->context->sample_rate = audio_output_samplerate(audio);
+	enc->context->channels    = (int)audio_output_get_channels(audio);
+	enc->context->sample_rate = audio_output_get_sample_rate(audio);
 	enc->context->sample_fmt  = enc->aac->sample_fmts ?
 		enc->aac->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
 
@@ -274,16 +274,16 @@ static size_t aac_frame_size(void *data)
 }
 
 struct obs_encoder_info aac_encoder_info = {
-	.id         = "ffmpeg_aac",
-	.type       = OBS_ENCODER_AUDIO,
-	.codec      = "AAC",
-	.getname    = aac_getname,
-	.create     = aac_create,
-	.destroy    = aac_destroy,
-	.encode     = aac_encode,
-	.frame_size = aac_frame_size,
-	.defaults   = aac_defaults,
-	.properties = aac_properties,
-	.extra_data = aac_extra_data,
-	.audio_info = aac_audio_info
+	.id             = "ffmpeg_aac",
+	.type           = OBS_ENCODER_AUDIO,
+	.codec          = "AAC",
+	.get_name       = aac_getname,
+	.create         = aac_create,
+	.destroy        = aac_destroy,
+	.encode         = aac_encode,
+	.get_frame_size = aac_frame_size,
+	.get_defaults   = aac_defaults,
+	.get_properties = aac_properties,
+	.get_extra_data = aac_extra_data,
+	.get_audio_info = aac_audio_info
 };

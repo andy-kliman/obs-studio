@@ -120,7 +120,7 @@ struct obs_source_info {
 	 *
 	 * @return         The translated name of the source type
 	 */
-	const char *(*getname)(void);
+	const char *(*get_name)(void);
 
 	/**
 	 * Creates the source data for the source
@@ -141,11 +141,11 @@ struct obs_source_info {
 
 	/** Returns the width of the source.  Required if this is an input
 	 * source and has non-async video */
-	uint32_t (*getwidth)(void *data);
+	uint32_t (*get_width)(void *data);
 
 	/** Returns the height of the source.  Required if this is an input
 	 * source and has non-async video */
-	uint32_t (*getheight)(void *data);
+	uint32_t (*get_height)(void *data);
 
 	/* ----------------------------------------------------------------- */
 	/* Optional implementation */
@@ -155,14 +155,14 @@ struct obs_source_info {
 	 *
 	 * @param[out]  settings  Data to assign default settings to
 	 */
-	void (*defaults)(obs_data_t settings);
+	void (*get_defaults)(obs_data_t settings);
 
 	/** 
 	 * Gets the property information of this source
 	 *
 	 * @return         The properties data
 	 */
-	obs_properties_t (*properties)(void);
+	obs_properties_t (*get_properties)(void);
 
 	/**
 	 * Updates the settings for this source
@@ -222,7 +222,7 @@ struct obs_source_info {
 	 *                be NULL, and the source is expected to process with
 	 *                an effect manually.
 	 */
-	void (*video_render)(void *data, effect_t effect);
+	void (*video_render)(void *data, gs_effect_t effect);
 
 	/**
 	 * Called to filter raw async video data.
@@ -234,8 +234,8 @@ struct obs_source_info {
 	 * @return        New video frame data.  This can defer video data to
 	 *                be drawn later if time is needed for processing
 	 */
-	struct source_frame *(*filter_video)(void *data,
-			const struct source_frame *frame);
+	struct obs_source_frame *(*filter_video)(void *data,
+			const struct obs_source_frame *frame);
 
 	/**
 	 * Called to filter raw audio data.
@@ -248,8 +248,8 @@ struct obs_source_info {
 	 *                the data passed and return it, or you can defer audio
 	 *                data for later if time is needed for processing.
 	 */
-	struct filtered_audio *(*filter_audio)(void *data,
-			struct filtered_audio *audio);
+	struct obs_audio_data *(*filter_audio)(void *data,
+			struct obs_audio_data *audio);
 
 	/**
 	 * Called to enumerate all sources being used within this source.

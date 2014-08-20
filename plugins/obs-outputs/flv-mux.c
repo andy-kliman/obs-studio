@@ -34,7 +34,7 @@
 static inline double encoder_bitrate(obs_encoder_t encoder)
 {
 	obs_data_t settings = obs_encoder_get_settings(encoder);
-	double bitrate = obs_data_getdouble(settings, "bitrate");
+	double bitrate = obs_data_get_double(settings, "bitrate");
 
 	obs_data_release(settings);
 	return bitrate;
@@ -76,30 +76,36 @@ static void build_flv_meta_data(obs_output_t context,
 	enc_num_val(&enc, end, "duration", 0.0);
 	enc_num_val(&enc, end, "fileSize", 0.0);
 
-	enc_num_val(&enc, end, "width",  (double)video_output_width(video));
-	enc_num_val(&enc, end, "height", (double)video_output_height(video));
+	enc_num_val(&enc, end, "width",
+			(double)obs_encoder_get_width(vencoder));
+	enc_num_val(&enc, end, "height",
+			(double)obs_encoder_get_height(vencoder));
+
 	enc_str_val(&enc, end, "videocodecid", "avc1");
 	enc_num_val(&enc, end, "videodatarate", encoder_bitrate(vencoder));
-	enc_num_val(&enc, end, "framerate", video_output_framerate(video));
+	enc_num_val(&enc, end, "framerate", video_output_get_frame_rate(video));
 
 	enc_str_val(&enc, end, "audiocodecid", "mp4a");
 	enc_num_val(&enc, end, "audiodatarate", encoder_bitrate(aencoder));
 	enc_num_val(&enc, end, "audiosamplerate",
-			(double)audio_output_samplerate(audio));
+			(double)audio_output_get_sample_rate(audio));
 	enc_num_val(&enc, end, "audiosamplesize", 16.0);
 	enc_num_val(&enc, end, "audiochannels",
-			(double)audio_output_channels(audio));
+			(double)audio_output_get_channels(audio));
 
-	enc_bool_val(&enc, end, "stereo", audio_output_channels(audio) == 2);
+	enc_bool_val(&enc, end, "stereo",
+			audio_output_get_channels(audio) == 2);
 
-	dstr_printf(&encoder_name, "%s (libobs version %d.%d.%d",
-			MODULE_NAME,
+	dstr_printf(&encoder_name, "%s (libobs version ",
+			MODULE_NAME);
+
+#ifdef HAVE_OBSCONFIG_H
+	dstr_cat(&encoder_name, OBS_VERSION);
+#else
+	dstr_catf(&encoder_name, "%d.%d.%d",
 			LIBOBS_API_MAJOR_VER,
 			LIBOBS_API_MINOR_VER,
 			LIBOBS_API_PATCH_VER);
-
-#ifdef HAVE_OBSCONFIG_H
-	dstr_catf(&encoder_name, ", %s", OBS_VERSION);
 #endif
 
 	dstr_cat(&encoder_name, ")");

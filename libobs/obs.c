@@ -15,6 +15,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
 
+#include <inttypes.h>
+
 #include "callback/calldata.h"
 
 #include "obs.h"
@@ -22,6 +24,7 @@
 
 struct obs_core *obs = NULL;
 
+extern void add_default_module_paths(void);
 extern char *find_libobs_data_file(const char *file);
 
 static inline void make_gs_init_data(struct gs_init_data *gid,
@@ -143,9 +146,9 @@ static bool obs_init_gpu_conversion(struct obs_video_info *ovi)
 	}
 
 	for (size_t i = 0; i < NUM_TEXTURES; i++) {
-		video->convert_textures[i] = gs_create_texture(
+		video->convert_textures[i] = gs_texture_create(
 				ovi->output_width, video->conversion_height,
-				GS_RGBA, 1, NULL, GS_RENDERTARGET);
+				GS_RGBA, 1, NULL, GS_RENDER_TARGET);
 
 		if (!video->convert_textures[i])
 			return false;
@@ -163,36 +166,36 @@ static bool obs_init_textures(struct obs_video_info *ovi)
 	size_t i;
 
 	for (i = 0; i < NUM_TEXTURES; i++) {
-		video->copy_surfaces[i] = gs_create_stagesurface(
+		video->copy_surfaces[i] = gs_stagesurface_create(
 				ovi->output_width, output_height, GS_RGBA);
 
 		if (!video->copy_surfaces[i])
 			return false;
 
-		video->render_textures[i] = gs_create_texture(
+		video->render_textures[i] = gs_texture_create(
 				ovi->base_width, ovi->base_height,
-				GS_RGBA, 1, NULL, GS_RENDERTARGET);
+				GS_RGBA, 1, NULL, GS_RENDER_TARGET);
 
 		if (!video->render_textures[i])
 			return false;
 
-		video->output_textures[i] = gs_create_texture(
+		video->output_textures[i] = gs_texture_create(
 				ovi->output_width, ovi->output_height,
-				GS_RGBA, 1, NULL, GS_RENDERTARGET);
+				GS_RGBA, 1, NULL, GS_RENDER_TARGET);
 
 		if (!video->output_textures[i])
 			return false;
 
 		if (yuv)
-			source_frame_init(&video->convert_frames[i],
+			obs_source_frame_init(&video->convert_frames[i],
 					ovi->output_format,
-					ovi->output_width, ovi->output_height);
+					ovi->output_width,ovi->output_height);
 	}
 
 	return true;
 }
 
-static bool obs_init_graphics(struct obs_video_info *ovi)
+static int obs_init_graphics(struct obs_video_info *ovi)
 {
 	struct obs_core_video *video = &obs->video;
 	struct gs_init_data graphics_data;
@@ -204,43 +207,45 @@ static bool obs_init_graphics(struct obs_video_info *ovi)
 	errorcode = gs_create(&video->graphics, ovi->graphics_module,
 			&graphics_data);
 	if (errorcode != GS_SUCCESS) {
-		if (errorcode == GS_ERROR_MODULE_NOT_FOUND)
-			blog(LOG_ERROR, "Could not find graphics module '%s'",
-					ovi->graphics_module);
-		return false;
+		switch (errorcode) {
+		case GS_ERROR_MODULE_NOT_FOUND:
+			return OBS_VIDEO_MODULE_NOT_FOUND;
+		case GS_ERROR_NOT_SUPPORTED:
+			return OBS_VIDEO_NOT_SUPPORTED;
+		default:
+			return OBS_VIDEO_FAIL;
+		}
 	}
 
-	gs_entercontext(video->graphics);
+	gs_enter_context(video->graphics);
 
-	if (success) {
-		char *filename = find_libobs_data_file("default.effect");
-		video->default_effect = gs_create_effect_from_file(filename,
-				NULL);
-		bfree(filename);
+	char *filename = find_libobs_data_file("default.effect");
+	video->default_effect = gs_effect_create_from_file(filename,
+			NULL);
+	bfree(filename);
 
-		filename = find_libobs_data_file("solid.effect");
-		video->solid_effect = gs_create_effect_from_file(filename,
-				NULL);
-		bfree(filename);
+	filename = find_libobs_data_file("solid.effect");
+	video->solid_effect = gs_effect_create_from_file(filename,
+			NULL);
+	bfree(filename);
 
-		filename = find_libobs_data_file("format_conversion.effect");
-		video->conversion_effect = gs_create_effect_from_file(filename,
-				NULL);
-		bfree(filename);
+	filename = find_libobs_data_file("format_conversion.effect");
+	video->conversion_effect = gs_effect_create_from_file(filename,
+			NULL);
+	bfree(filename);
 
-		if (!video->default_effect)
-			success = false;
-		if (!video->solid_effect)
-			success = false;
-		if (!video->conversion_effect)
-			success = false;
-	}
+	if (!video->default_effect)
+		success = false;
+	if (!video->solid_effect)
+		success = false;
+	if (!video->conversion_effect)
+		success = false;
 
-	gs_leavecontext();
-	return success;
+	gs_leave_context();
+	return success ? OBS_VIDEO_SUCCESS : OBS_VIDEO_FAIL;
 }
 
-static bool obs_init_video(struct obs_video_info *ovi)
+static int obs_init_video(struct obs_video_info *ovi)
 {
 	struct obs_core_video *video = &obs->video;
 	struct video_output_info vi;
@@ -256,36 +261,37 @@ static bool obs_init_video(struct obs_video_info *ovi)
 	errorcode = video_output_open(&video->video, &vi);
 
 	if (errorcode != VIDEO_OUTPUT_SUCCESS) {
-		if (errorcode == VIDEO_OUTPUT_INVALIDPARAM)
+		if (errorcode == VIDEO_OUTPUT_INVALIDPARAM) {
 			blog(LOG_ERROR, "Invalid video parameters specified");
-		else
+			return OBS_VIDEO_INVALID_PARAM;
+		} else {
 			blog(LOG_ERROR, "Could not open video output");
-
-		return false;
+		}
+		return OBS_VIDEO_FAIL;
 	}
 
 	if (!obs_display_init(&video->main_display, NULL))
-		return false;
+		return OBS_VIDEO_FAIL;
 
 	video->main_display.cx = ovi->window_width;
 	video->main_display.cy = ovi->window_height;
 
-	gs_entercontext(video->graphics);
+	gs_enter_context(video->graphics);
 
 	if (ovi->gpu_conversion && !obs_init_gpu_conversion(ovi))
-		return false;
+		return OBS_VIDEO_FAIL;
 	if (!obs_init_textures(ovi))
-		return false;
+		return OBS_VIDEO_FAIL;
 
-	gs_leavecontext();
+	gs_leave_context();
 
 	errorcode = pthread_create(&video->video_thread, NULL,
 			obs_video_thread, obs);
 	if (errorcode != 0)
-		return false;
+		return OBS_VIDEO_FAIL;
 
 	video->thread_initialized = true;
-	return true;
+	return OBS_VIDEO_SUCCESS;
 }
 
 static void stop_video(void)
@@ -308,26 +314,43 @@ static void obs_free_video(void)
 	struct obs_core_video *video = &obs->video;
 
 	if (video->video) {
+		uint32_t total_frames =
+			video_output_get_total_frames(video->video);
+		uint32_t skipped_frames =
+			video_output_get_skipped_frames(video->video);
+		double percentage_skipped =
+			(double)skipped_frames / (double)total_frames * 100.0;
+
 		obs_display_free(&video->main_display);
+
+		blog(LOG_INFO, "Video session ending");
+		blog(LOG_INFO, "Total frames: %"PRIu32, total_frames);
+		if (total_frames) {
+			blog(LOG_INFO, "Number of skipped frames: "
+					"%"PRIu32" (%g%%)",
+					skipped_frames, percentage_skipped);
+		}
+		blog(LOG_INFO, "-------------------------------------------");
+
 		video_output_close(video->video);
 		video->video = NULL;
 
 		if (!video->graphics)
 			return;
 
-		gs_entercontext(video->graphics);
+		gs_enter_context(video->graphics);
 
 		if (video->mapped_surface) {
-			stagesurface_unmap(video->mapped_surface);
+			gs_stagesurface_unmap(video->mapped_surface);
 			video->mapped_surface = NULL;
 		}
 
 		for (size_t i = 0; i < NUM_TEXTURES; i++) {
-			stagesurface_destroy(video->copy_surfaces[i]);
-			texture_destroy(video->render_textures[i]);
-			texture_destroy(video->convert_textures[i]);
-			texture_destroy(video->output_textures[i]);
-			source_frame_free(&video->convert_frames[i]);
+			gs_stagesurface_destroy(video->copy_surfaces[i]);
+			gs_texture_destroy(video->render_textures[i]);
+			gs_texture_destroy(video->convert_textures[i]);
+			gs_texture_destroy(video->output_textures[i]);
+			obs_source_frame_free(&video->convert_frames[i]);
 
 			video->copy_surfaces[i]    = NULL;
 			video->render_textures[i]  = NULL;
@@ -335,7 +358,7 @@ static void obs_free_video(void)
 			video->output_textures[i]  = NULL;
 		}
 
-		gs_leavecontext();
+		gs_leave_context();
 
 		video->cur_texture = 0;
 	}
@@ -346,14 +369,14 @@ static void obs_free_graphics(void)
 	struct obs_core_video *video = &obs->video;
 
 	if (video->graphics) {
-		gs_entercontext(video->graphics);
+		gs_enter_context(video->graphics);
 
-		effect_destroy(video->default_effect);
-		effect_destroy(video->solid_effect);
-		effect_destroy(video->conversion_effect);
+		gs_effect_destroy(video->default_effect);
+		gs_effect_destroy(video->solid_effect);
+		gs_effect_destroy(video->conversion_effect);
 		video->default_effect = NULL;
 
-		gs_leavecontext();
+		gs_leave_context();
 
 		gs_destroy(video->graphics);
 		video->graphics = NULL;
@@ -519,6 +542,7 @@ static bool obs_init(const char *locale)
 
 	obs->locale = bstrdup(locale);
 	obs_register_source(&scene_info);
+	add_default_module_paths();
 	return true;
 }
 
@@ -540,6 +564,8 @@ bool obs_startup(const char *locale)
 
 void obs_shutdown(void)
 {
+	struct obs_module *module;
+
 	if (!obs)
 		return;
 
@@ -561,9 +587,17 @@ void obs_shutdown(void)
 	proc_handler_destroy(obs->procs);
 	signal_handler_destroy(obs->signals);
 
-	for (size_t i = 0; i < obs->modules.num; i++)
-		free_module(obs->modules.array+i);
-	da_free(obs->modules);
+	module = obs->first_module;
+	while (module) {
+		struct obs_module *next = module->next;
+		free_module(module);
+		module = next;
+	}
+	obs->first_module = NULL;
+
+	for (size_t i = 0; i < obs->module_paths.num; i++)
+		free_module_path(obs->module_paths.array+i);
+	da_free(obs->module_paths);
 
 	bfree(obs->locale);
 	bfree(obs);
@@ -575,8 +609,14 @@ bool obs_initialized(void)
 	return obs != NULL;
 }
 
+uint32_t obs_get_version(void)
+{
+	return LIBOBS_API_VER;
+}
+
 void obs_set_locale(const char *locale)
 {
+	struct obs_module *module;
 	if (!obs)
 		return;
 
@@ -584,11 +624,12 @@ void obs_set_locale(const char *locale)
 		bfree(obs->locale);
 	obs->locale = bstrdup(locale);
 
-	for (size_t i = 0; i < obs->modules.num; i++) {
-		struct obs_module *module = obs->modules.array+i;
-
+	module = obs->first_module;
+	while (module) {
 		if (module->set_locale)
 			module->set_locale(locale);
+
+		module = module->next;
 	}
 }
 
@@ -597,13 +638,26 @@ const char *obs_get_locale(void)
 	return obs ? obs->locale : NULL;
 }
 
-bool obs_reset_video(struct obs_video_info *ovi)
+#define OBS_SIZE_MIN 2
+#define OBS_SIZE_MAX (32 * 1024)
+
+static inline bool size_valid(uint32_t width, uint32_t height)
 {
-	if (!obs) return false;
+	return (width >= OBS_SIZE_MIN && height >= OBS_SIZE_MIN &&
+	        width <= OBS_SIZE_MAX && height <= OBS_SIZE_MAX);
+}
+
+int obs_reset_video(struct obs_video_info *ovi)
+{
+	if (!obs) return OBS_VIDEO_FAIL;
 
 	/* don't allow changing of video settings if active. */
 	if (obs->video.video && video_output_active(obs->video.video))
-		return false;
+		return OBS_VIDEO_CURRENTLY_ACTIVE;
+
+	if (!size_valid(ovi->output_width, ovi->output_height) ||
+	    !size_valid(ovi->base_width,   ovi->base_height))
+		return OBS_VIDEO_INVALID_PARAM;
 
 	struct obs_core_video *video = &obs->video;
 
@@ -612,15 +666,18 @@ bool obs_reset_video(struct obs_video_info *ovi)
 
 	if (!ovi) {
 		obs_free_graphics();
-		return true;
+		return OBS_VIDEO_SUCCESS;
 	}
 
 	/* align to multiple-of-two and SSE alignment sizes */
 	ovi->output_width  &= 0xFFFFFFFC;
 	ovi->output_height &= 0xFFFFFFFE;
 
-	if (!video->graphics && !obs_init_graphics(ovi))
-		return false;
+	if (!video->graphics) {
+		int errorcode = obs_init_graphics(ovi);
+		if (errorcode != OBS_VIDEO_SUCCESS)
+			return errorcode;
+	}
 
 	blog(LOG_INFO, "video settings reset:\n"
 	               "\tbase resolution:   %dx%d\n"
@@ -664,7 +721,7 @@ bool obs_get_video_info(struct obs_video_info *ovi)
 	if (!obs || !video->graphics)
 		return false;
 
-	info = video_output_getinfo(video->video);
+	info = video_output_get_info(video->video);
 
 	memset(ovi, 0, sizeof(struct obs_video_info));
 	ovi->base_width    = video->base_width;
@@ -686,7 +743,7 @@ bool obs_get_audio_info(struct audio_output_info *aoi)
 	if (!obs || !audio->audio)
 		return false;
 
-	info = audio_output_getinfo(audio->audio);
+	info = audio_output_get_info(audio->audio);
 	memcpy(aoi, info, sizeof(struct audio_output_info));
 
 	return true;
@@ -752,17 +809,24 @@ bool obs_enum_service_types(size_t idx, const char **id)
 	return true;
 }
 
-graphics_t obs_graphics(void)
+void obs_enter_graphics(void)
 {
-	return (obs != NULL) ? obs->video.graphics : NULL;
+	if (obs && obs->video.graphics)
+		gs_enter_context(obs->video.graphics);
 }
 
-audio_t obs_audio(void)
+void obs_leave_graphics(void)
+{
+	if (obs && obs->video.graphics)
+		gs_leave_context();
+}
+
+audio_t obs_get_audio(void)
 {
 	return (obs != NULL) ? obs->audio.audio : NULL;
 }
 
-video_t obs_video(void)
+video_t obs_get_video(void)
 {
 	return (obs != NULL) ? obs->video.video : NULL;
 }
@@ -839,7 +903,7 @@ bool obs_add_source(obs_source_t source)
 	obs_source_addref(source);
 	pthread_mutex_unlock(&obs->data.sources_mutex);
 
-	calldata_setptr(&params, "source", source);
+	calldata_set_ptr(&params, "source", source);
 	signal_handler_signal(obs->signals, "source_add", &params);
 	calldata_free(&params);
 
@@ -849,7 +913,7 @@ bool obs_add_source(obs_source_t source)
 obs_source_t obs_get_output_source(uint32_t channel)
 {
 	if (!obs) return NULL;
-	return obs_view_getsource(&obs->data.main_view, channel);
+	return obs_view_get_source(&obs->data.main_view, channel);
 }
 
 void obs_set_output_source(uint32_t channel, obs_source_t source)
@@ -869,11 +933,11 @@ void obs_set_output_source(uint32_t channel, obs_source_t source)
 
 	prev_source = view->channels[channel];
 
-	calldata_setint(&params, "channel", channel);
-	calldata_setptr(&params, "prev_source", prev_source);
-	calldata_setptr(&params, "source", source);
+	calldata_set_int(&params, "channel", channel);
+	calldata_set_ptr(&params, "prev_source", prev_source);
+	calldata_set_ptr(&params, "source", source);
 	signal_handler_signal(obs->signals, "channel_change", &params);
-	calldata_getptr(&params, "source", &source);
+	calldata_get_ptr(&params, "source", &source);
 	calldata_free(&params);
 
 	view->channels[channel] = source;
@@ -1011,25 +1075,25 @@ obs_service_t obs_get_service_by_name(const char *name)
 			&obs->data.services_mutex);
 }
 
-effect_t obs_get_default_effect(void)
+gs_effect_t obs_get_default_effect(void)
 {
 	if (!obs) return NULL;
 	return obs->video.default_effect;
 }
 
-effect_t obs_get_solid_effect(void)
+gs_effect_t obs_get_solid_effect(void)
 {
 	if (!obs) return NULL;
 	return obs->video.solid_effect;
 }
 
-signal_handler_t obs_signalhandler(void)
+signal_handler_t obs_get_signal_handler(void)
 {
 	if (!obs) return NULL;
 	return obs->signals;
 }
 
-proc_handler_t obs_prochandler(void)
+proc_handler_t obs_get_proc_handler(void)
 {
 	if (!obs) return NULL;
 	return obs->procs;
@@ -1071,7 +1135,7 @@ void obs_set_master_volume(float volume)
 
 	if (!obs) return;
 
-	calldata_setfloat(&data, "volume", volume);
+	calldata_set_float(&data, "volume", volume);
 	signal_handler_signal(obs->signals, "master_volume", &data);
 	volume = (float)calldata_float(&data, "volume");
 	calldata_free(&data);
@@ -1098,16 +1162,16 @@ float obs_get_present_volume(void)
 obs_source_t obs_load_source(obs_data_t source_data)
 {
 	obs_source_t source;
-	const char   *name    = obs_data_getstring(source_data, "name");
-	const char   *id      = obs_data_getstring(source_data, "id");
-	obs_data_t   settings = obs_data_getobj(source_data, "settings");
+	const char   *name    = obs_data_get_string(source_data, "name");
+	const char   *id      = obs_data_get_string(source_data, "id");
+	obs_data_t   settings = obs_data_get_obj(source_data, "settings");
 	double       volume;
 
 	source = obs_source_create(OBS_SOURCE_TYPE_INPUT, id, name, settings);
 
 	obs_data_set_default_double(source_data, "volume", 1.0);
-	volume = obs_data_getdouble(source_data, "volume");
-	obs_source_setvolume(source, (float)volume);
+	volume = obs_data_get_double(source_data, "volume");
+	obs_source_set_volume(source, (float)volume);
 
 	obs_data_release(settings);
 
@@ -1145,19 +1209,17 @@ void obs_load_sources(obs_data_array_t array)
 obs_data_t obs_save_source(obs_source_t source)
 {
 	obs_data_t source_data = obs_data_create();
-	obs_data_t settings    = obs_source_getsettings(source);
-	float      volume      = obs_source_getvolume(source);
-	const char *name       = obs_source_getname(source);
-	const char *id;
+	obs_data_t settings    = obs_source_get_settings(source);
+	float      volume      = obs_source_get_volume(source);
+	const char *name       = obs_source_get_name(source);
+	const char *id         = obs_source_get_id(source);
 
 	obs_source_save(source);
 
-	obs_source_gettype(source, NULL, &id);
-
-	obs_data_setstring(source_data, "name",     name);
-	obs_data_setstring(source_data, "id",       id);
-	obs_data_setobj   (source_data, "settings", settings);
-	obs_data_setdouble(source_data, "volume",   volume);
+	obs_data_set_string(source_data, "name",     name);
+	obs_data_set_string(source_data, "id",       id);
+	obs_data_set_obj   (source_data, "settings", settings);
+	obs_data_set_double(source_data, "volume",   volume);
 
 	obs_data_release(settings);
 

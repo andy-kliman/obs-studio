@@ -24,12 +24,10 @@
 bool OBSBasicSourceSelect::EnumSources(void *data, obs_source_t source)
 {
 	OBSBasicSourceSelect *window = static_cast<OBSBasicSourceSelect*>(data);
-	const char *name = obs_source_getname(source);
-	const char *type;
+	const char *name = obs_source_get_name(source);
+	const char *id   = obs_source_get_id(source);
 
-	obs_source_gettype(source, nullptr, &type);
-
-	if (strcmp(type, window->type) == 0)
+	if (strcmp(id, window->id) == 0)
 		window->ui->sourceList->addItem(QT_UTF8(name));
 
 	return true;
@@ -55,11 +53,10 @@ void OBSBasicSourceSelect::OBSSourceRemoved(void *data, calldata_t calldata)
 
 void OBSBasicSourceSelect::SourceAdded(OBSSource source)
 {
-	const char *name = obs_source_getname(source);
-	const char *sourceType;
+	const char *name     = obs_source_get_name(source);
+	const char *sourceId = obs_source_get_id(source);
 
-	obs_source_gettype(source, nullptr, &sourceType);
-	if (strcmp(sourceType, type) != 0)
+	if (strcmp(sourceId, id) != 0)
 		return;
 
 	ui->sourceList->addItem(name);
@@ -67,11 +64,10 @@ void OBSBasicSourceSelect::SourceAdded(OBSSource source)
 
 void OBSBasicSourceSelect::SourceRemoved(OBSSource source)
 {
-	const char *name = obs_source_getname(source);
-	const char *sourceType;
+	const char *name     = obs_source_get_name(source);
+	const char *sourceId = obs_source_get_id(source);
 
-	obs_source_gettype(source, nullptr, &sourceType);
-	if (strcmp(sourceType, type) != 0)
+	if (strcmp(sourceId, id) != 0)
 		return;
 
 	QList<QListWidgetItem*> items =
@@ -86,7 +82,7 @@ void OBSBasicSourceSelect::SourceRemoved(OBSSource source)
 static void AddExisting(const char *name)
 {
 	obs_source_t source = obs_get_output_source(0);
-	obs_scene_t  scene  = obs_scene_fromsource(source);
+	obs_scene_t  scene  = obs_scene_from_source(source);
 	if (!scene)
 		return;
 
@@ -102,7 +98,7 @@ static void AddExisting(const char *name)
 bool AddNew(QWidget *parent, const char *id, const char *name)
 {
 	obs_source_t source  = obs_get_output_source(0);
-	obs_scene_t  scene   = obs_scene_fromsource(source);
+	obs_scene_t  scene   = obs_scene_from_source(source);
 	bool         success = false;
 	if (!source)
 		return false;
@@ -144,12 +140,12 @@ void OBSBasicSourceSelect::on_buttonBox_accepted()
 	} else {
 		if (ui->sourceName->text().isEmpty()) {
 			QMessageBox::information(this,
-					QTStr("NoNameEntered"),
-					QTStr("NoNameEntered"));
+					QTStr("NoNameEntered.Title"),
+					QTStr("NoNameEntered.Text"));
 			return;
 		}
 
-		if (!AddNew(this, type, QT_TO_UTF8(ui->sourceName->text())))
+		if (!AddNew(this, id, QT_TO_UTF8(ui->sourceName->text())))
 			return;
 	}
 
@@ -161,15 +157,15 @@ void OBSBasicSourceSelect::on_buttonBox_rejected()
 	done(DialogCode::Rejected);
 }
 
-OBSBasicSourceSelect::OBSBasicSourceSelect(OBSBasic *parent, const char *type_)
+OBSBasicSourceSelect::OBSBasicSourceSelect(OBSBasic *parent, const char *id_)
 	: QDialog (parent),
 	  ui      (new Ui::OBSBasicSourceSelect),
-	  type    (type_)
+	  id      (id_)
 {
 	ui->setupUi(this);
 
-	QString placeHolderText{QT_UTF8(obs_source_getdisplayname(
-				OBS_SOURCE_TYPE_INPUT, type_))};
+	QString placeHolderText{QT_UTF8(obs_source_get_display_name(
+				OBS_SOURCE_TYPE_INPUT, id))};
 
 	QString text{placeHolderText};
 	int i = 1;

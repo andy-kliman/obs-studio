@@ -20,19 +20,24 @@ else()
 		set(_lib_suffix 32)
 	endif()
 
+	set(JANSSON_PATH_ARCH JanssonPath${_lib_suffix})
+
 	find_path(Jansson_INCLUDE_DIR
 		NAMES jansson.h
 		HINTS
-			ENV JanssonPath
 			${_JANSSON_INCLUDE_DIRS}
+			ENV JanssonPath
+			ENV ${JANSSON_PATH_ARCH}
+		PATHS
 			/usr/include /usr/local/include /opt/local/include /sw/include)
 
 	find_library(Jansson_LIB
-		NAMES jansson libjansson
+		NAMES ${_JANSSON_LIBRARIES} jansson libjansson
 		HINTS
-			${Jansson_INCLUDE_DIR}/../lib
-			${Jansson_INCLUDE_DIR}/lib${_lib_suffix}
 			${_JANSSON_LIBRARY_DIRS}
+			"${Jansson_INCLUDE_DIR}/../lib"
+			"${Jansson_INCLUDE_DIR}/lib${_lib_suffix}"
+		PATHS
 			/usr/lib /usr/local/lib /opt/local/lib /sw/lib)
  
 	if(JANSSON_VERSION)

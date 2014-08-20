@@ -60,7 +60,7 @@ struct DShowInput {
 	VideoConfig  videoConfig;
 	AudioConfig  audioConfig;
 
-	source_frame frame;
+	obs_source_frame frame;
 
 	inline DShowInput(obs_source_t source_)
 		: source         (source_),
@@ -206,7 +206,7 @@ static bool DecodeDeviceId(DeviceId &out, const char *device_id)
 	BPtr<wchar_t> wname = dstr_to_wcs(name);
 	out.name = wname;
 
-	if (!dstr_isempty(path)) {
+	if (!dstr_is_empty(path)) {
 		BPtr<wchar_t> wpath = dstr_to_wcs(path);
 		out.path = wpath;
 	}
@@ -348,16 +348,16 @@ static bool DetermineResolution(int &cx, int &cy, obs_data_t settings,
 		VideoDevice dev)
 {
 	const char *res = obs_data_get_autoselect_string(settings, RESOLUTION);
-	if (obs_data_has_autoselect(settings, RESOLUTION) &&
+	if (obs_data_has_autoselect_value(settings, RESOLUTION) &&
 			ConvertRes(cx, cy, res) &&
 			ResolutionAvailable(dev, cx, cy))
 		return true;
 
-	res = obs_data_getstring(settings, RESOLUTION);
+	res = obs_data_get_string(settings, RESOLUTION);
 	if (ConvertRes(cx, cy, res) && ResolutionAvailable(dev, cx, cy))
 		return true;
 
-	res = obs_data_getstring(settings, LAST_RESOLUTION);
+	res = obs_data_get_string(settings, LAST_RESOLUTION);
 	if (ConvertRes(cx, cy, res) && ResolutionAvailable(dev, cx, cy))
 		return true;
 
@@ -368,7 +368,7 @@ static long long GetOBSFPS();
 
 void DShowInput::Update(obs_data_t settings)
 {
-	string video_device_id = obs_data_getstring(settings, VIDEO_DEVICE_ID);
+	string video_device_id = obs_data_get_string(settings, VIDEO_DEVICE_ID);
 
 	if (!comInitialized) {
 		CoInitialize(nullptr);
@@ -388,24 +388,27 @@ void DShowInput::Update(obs_data_t settings)
 	if (!data.GetDevice(dev, video_device_id.c_str()))
 		return;
 
-	int resType = (int)obs_data_getint(settings, RES_TYPE);
+	int resType = (int)obs_data_get_int(settings, RES_TYPE);
 	int cx = 0, cy = 0;
 	long long interval = 0;
 	VideoFormat format = VideoFormat::Any;
 
 	if (resType == ResType_Custom) {
-		string resolution = obs_data_getstring(settings, RESOLUTION);
+		bool has_autosel_val;
+		string resolution = obs_data_get_string(settings, RESOLUTION);
 		if (!ResolutionValid(resolution, cx, cy))
 			return;
 
-		interval = obs_data_has_autoselect(settings, FRAME_INTERVAL) ?
+		has_autosel_val = obs_data_has_autoselect_value(settings,
+				FRAME_INTERVAL);
+		interval = has_autosel_val ?
 			obs_data_get_autoselect_int(settings, FRAME_INTERVAL) :
-			obs_data_getint(settings, FRAME_INTERVAL);
+			obs_data_get_int(settings, FRAME_INTERVAL);
 
 		if (interval == FPS_MATCHING)
 			interval = GetOBSFPS();
 
-		format = (VideoFormat)obs_data_getint(settings, VIDEO_FORMAT);
+		format = (VideoFormat)obs_data_get_int(settings, VIDEO_FORMAT);
 
 		long long best_interval = numeric_limits<long long>::max();
 		bool video_format_match = false;
@@ -418,7 +421,7 @@ void DShowInput::Update(obs_data_t settings)
 
 		interval = best_interval;
 		blog(LOG_INFO, "%s: Using interval %lld",
-				obs_source_getname(source), interval);
+				obs_source_get_name(source), interval);
 	}
 
 	videoConfig.name             = id.name.c_str();
@@ -606,7 +609,7 @@ static bool SetResolution(obs_properties_t props, obs_data_t settings,
 			settings);
 
 	if (!autoselect)
-		obs_data_setstring(settings, LAST_RESOLUTION, res.c_str());
+		obs_data_set_string(settings, LAST_RESOLUTION, res.c_str());
 	return true;
 }
 
@@ -619,9 +622,9 @@ static bool DeviceResolutionChanged(obs_properties_t props, obs_property_t p,
 	const char *id;
 	VideoDevice device;
 
-	id       = obs_data_getstring(settings, VIDEO_DEVICE_ID);
-	string res = obs_data_getstring(settings, RESOLUTION);
-	string last_res = obs_data_getstring(settings, LAST_RESOLUTION);
+	id       = obs_data_get_string(settings, VIDEO_DEVICE_ID);
+	string res = obs_data_get_string(settings, RESOLUTION);
+	string last_res = obs_data_get_string(settings, LAST_RESOLUTION);
 
 	if (!data->GetDevice(device, id))
 		return false;
@@ -717,8 +720,8 @@ static bool DeviceSelectionChanged(obs_properties_t props, obs_property_t p,
 	PropertiesData *data = (PropertiesData*)obs_properties_get_param(props);
 	VideoDevice device;
 
-	string id     = obs_data_getstring(settings, VIDEO_DEVICE_ID);
-	string old_id = obs_data_getstring(settings, LAST_VIDEO_DEV_ID);
+	string id     = obs_data_get_string(settings, VIDEO_DEVICE_ID);
+	string old_id = obs_data_get_string(settings, LAST_VIDEO_DEV_ID);
 
 	bool device_list_updated = UpdateDeviceList(p, id);
 
@@ -747,7 +750,7 @@ static bool DeviceSelectionChanged(obs_properties_t props, obs_property_t p,
 	if (!id.size() || !old_id.size() || id != old_id) {
 		p = obs_properties_get(props, RES_TYPE);
 		ResTypeChanged(props, p, settings);
-		obs_data_setstring(settings, LAST_VIDEO_DEV_ID, id.c_str());
+		obs_data_set_string(settings, LAST_VIDEO_DEV_ID, id.c_str());
 	}
 
 	return true;
@@ -824,7 +827,7 @@ static void PropertiesDataDestroy(void *data)
 static bool ResTypeChanged(obs_properties_t props, obs_property_t p,
 		obs_data_t settings)
 {
-	int  val     = (int)obs_data_getint(settings, RES_TYPE);
+	int  val     = (int)obs_data_get_int(settings, RES_TYPE);
 	bool enabled = (val != ResType_Preferred);
 
 	p = obs_properties_get(props, RESOLUTION);
@@ -1002,10 +1005,10 @@ static bool UpdateFPS(long long interval, obs_property_t list)
 static bool DeviceIntervalChanged(obs_properties_t props, obs_property_t p,
 		obs_data_t settings)
 {
-	long long val = obs_data_getint(settings, FRAME_INTERVAL);
+	long long val = obs_data_get_int(settings, FRAME_INTERVAL);
 
 	PropertiesData *data = (PropertiesData*)obs_properties_get_param(props);
-	const char *id = obs_data_getstring(settings, VIDEO_DEVICE_ID);
+	const char *id = obs_data_get_string(settings, VIDEO_DEVICE_ID);
 	VideoDevice device;
 
 	if (!data->GetDevice(device, id))
@@ -1018,14 +1021,14 @@ static bool DeviceIntervalChanged(obs_properties_t props, obs_property_t p,
 		return true;
 	}
 
-	int resType = (int)obs_data_getint(settings, RES_TYPE);
+	int resType = (int)obs_data_get_int(settings, RES_TYPE);
 	if (resType != ResType_Custom)
 		return true;
 
 	if (val == FPS_MATCHING)
 		val = GetOBSFPS();
 
-	VideoFormat format = (VideoFormat)obs_data_getint(settings,
+	VideoFormat format = (VideoFormat)obs_data_get_int(settings,
 							VIDEO_FORMAT);
 
 	bool video_format_matches = false;
@@ -1094,11 +1097,11 @@ static bool VideoFormatChanged(obs_properties_t props, obs_property_t p,
 		obs_data_t settings)
 {
 	PropertiesData *data = (PropertiesData*)obs_properties_get_param(props);
-	const char *id = obs_data_getstring(settings, VIDEO_DEVICE_ID);
+	const char *id = obs_data_get_string(settings, VIDEO_DEVICE_ID);
 	VideoDevice device;
 
 	VideoFormat curFormat =
-		(VideoFormat)obs_data_getint(settings, VIDEO_FORMAT);
+		(VideoFormat)obs_data_get_int(settings, VIDEO_FORMAT);
 
 	if (!data->GetDevice(device, id))
 		return UpdateVideoFormats(curFormat, p);
@@ -1110,7 +1113,7 @@ static bool VideoFormatChanged(obs_properties_t props, obs_property_t p,
 		return true;
 	}
 
-	long long interval = obs_data_getint(settings, FRAME_INTERVAL);
+	long long interval = obs_data_get_int(settings, FRAME_INTERVAL);
 
 	UpdateVideoFormats(device, curFormat, cx, cy, interval, props);
 	UpdateFPS(device, curFormat, interval, cx, cy, props);
@@ -1189,31 +1192,23 @@ void DShowModuleLogCallback(LogType type, const wchar_t *msg, void *param)
 	UNUSED_PARAMETER(param);
 }
 
-bool obs_module_load(uint32_t libobs_ver)
+bool obs_module_load(void)
 {
-	UNUSED_PARAMETER(libobs_ver);
-
 	SetLogCallback(DShowModuleLogCallback, nullptr);
 
 	obs_source_info info = {};
 	info.id              = "dshow_input";
 	info.type            = OBS_SOURCE_TYPE_INPUT;
-	info.output_flags    = OBS_SOURCE_VIDEO |
-	                       OBS_SOURCE_ASYNC;
-	info.getname         = GetDShowInputName;
+	info.output_flags    = OBS_SOURCE_VIDEO | OBS_SOURCE_ASYNC;
+	info.get_name        = GetDShowInputName;
 	info.create          = CreateDShowInput;
 	info.destroy         = DestroyDShowInput;
-	info.getwidth        = GetDShowWidth;
-	info.getheight       = GetDShowHeight;
 	info.update          = UpdateDShowInput;
-	info.defaults        = GetDShowDefaults;
-	info.properties      = GetDShowProperties;
+	info.get_width       = GetDShowWidth;
+	info.get_height      = GetDShowHeight;
+	info.get_defaults    = GetDShowDefaults;
+	info.get_properties  = GetDShowProperties;
 	obs_register_source(&info);
 
 	return true;
-}
-
-void obs_module_unload(void)
-{
-	OBS_MODULE_FREE_DEFAULT_LOCALE();
 }

@@ -5,6 +5,8 @@
 #include <QVBoxLayout>
 #include <QSlider>
 #include <QLabel>
+#include <QPainter>
+#include <QTimer>
 #include <string>
 #include <math.h>
 
@@ -12,6 +14,12 @@ using namespace std;
 
 #define VOL_MIN -96.0f
 #define VOL_MAX  0.0f
+
+/* 
+	VOL_MIN_LOG = DBToLog(VOL_MIN)
+	VOL_MAX_LOG = DBToLog(VOL_MAX)
+	... just in case someone wants to use a smaller scale
+ */
 
 #define VOL_MIN_LOG -2.0086001717619175
 #define VOL_MAX_LOG -0.77815125038364363
@@ -40,18 +48,14 @@ void VolControl::OBSVolumeChanged(void *data, calldata_t calldata)
 void VolControl::OBSVolumeLevel(void *data, calldata_t calldata)
 {
 	VolControl *volControl = static_cast<VolControl*>(data);
-	float level = calldata_float(calldata, "level");
-	float mag   = calldata_float(calldata, "magnitude");
-
-	/*
-	 * TODO: an actual volume control that can process level, mag, peak.
-	 *
-	 * for the time being, just average level and magnitude.
-	 */
-	float result = (level + mag) * 0.5f;
+	float peak      = calldata_float(calldata, "level");
+	float mag       = calldata_float(calldata, "magnitude");
+	float peakHold  = calldata_float(calldata, "peak");
 
 	QMetaObject::invokeMethod(volControl, "VolumeLevel",
-		Q_ARG(float, result));
+		Q_ARG(float, mag),
+		Q_ARG(float, peak),
+		Q_ARG(float, peakHold));
 }
 
 void VolControl::VolumeChanged(int vol)
@@ -61,34 +65,33 @@ void VolControl::VolumeChanged(int vol)
 	signalChanged = true;
 }
 
-void VolControl::VolumeLevel(float level)
+void VolControl::VolumeLevel(float mag, float peak, float peakHold)
 {
 	uint64_t curMeterTime = os_gettime_ns() / 1000000;
 
-	levelTotal += level;
-	levelCount += 1.0f;
+	/*
+	   Add again peak averaging?
+	*/
 
 	/* only update after a certain amount of time */
 	if ((curMeterTime - lastMeterTime) > UPDATE_INTERVAL_MS) {
+		float vol = (float)slider->value() * 0.01f;
 		lastMeterTime = curMeterTime;
-
-		float finalLevel = levelTotal / levelCount;
-		volMeter->setValue(int(DBToLinear(finalLevel) * 10000.0f));
-
-		levelTotal = 0.0f;
-		levelCount = 0.0f;
+		volMeter->setLevels(DBToLinear(mag) * vol,
+				    DBToLinear(peak) * vol,
+				    DBToLinear(peakHold) * vol);
 	}
 }
 
 void VolControl::SliderChanged(int vol)
 {
 	if (signalChanged) {
-		signal_handler_disconnect(obs_source_signalhandler(source),
+		signal_handler_disconnect(obs_source_get_signal_handler(source),
 				"volume", OBSVolumeChanged, this);
 
-		obs_source_setvolume(source, float(vol)*0.01f);
+		obs_source_set_volume(source, float(vol)*0.01f);
 
-		signal_handler_connect(obs_source_signalhandler(source),
+		signal_handler_connect(obs_source_get_signal_handler(source),
 				"volume", OBSVolumeChanged, this);
 	}
 
@@ -114,17 +117,17 @@ VolControl::VolControl(OBSSource source_)
 {
 	QVBoxLayout *mainLayout = new QVBoxLayout();
 	QHBoxLayout *textLayout = new QHBoxLayout();
-	int         vol         = int(obs_source_getvolume(source) * 100.0f);
+	int         vol         = int(obs_source_get_volume(source) * 100.0f);
 
 	nameLabel = new QLabel();
 	volLabel  = new QLabel();
-	volMeter  = new QProgressBar();
+	volMeter  = new VolumeMeter();
 	slider    = new QSlider(Qt::Horizontal);
 
 	QFont font = nameLabel->font();
 	font.setPointSize(font.pointSize()-1);
 
-	nameLabel->setText(obs_source_getname(source));
+	nameLabel->setText(obs_source_get_name(source));
 	nameLabel->setFont(font);
 	volLabel->setText(QString::number(vol));
 	volLabel->setFont(font);
@@ -132,18 +135,6 @@ VolControl::VolControl(OBSSource source_)
 	slider->setMaximum(100);
 	slider->setValue(vol);
 //	slider->setMaximumHeight(13);
-
-	volMeter->setMaximumHeight(1);
-	volMeter->setMinimum(0);
-	volMeter->setMaximum(10000);
-	volMeter->setTextVisible(false);
-
-	/* [Danni] Temporary color. */
-	QString testColor = "QProgressBar "
-	                    "{border: 0px} "
-	                    "QProgressBar::chunk "
-	                    "{width: 1px; background-color: #AA0000;}";
-	volMeter->setStyleSheet(testColor);
 
 	textLayout->setContentsMargins(0, 0, 0, 0);
 	textLayout->addWidget(nameLabel);
@@ -159,10 +150,10 @@ VolControl::VolControl(OBSSource source_)
 
 	setLayout(mainLayout);
 
-	signal_handler_connect(obs_source_signalhandler(source),
+	signal_handler_connect(obs_source_get_signal_handler(source),
 			"volume", OBSVolumeChanged, this);
 
-	signal_handler_connect(obs_source_signalhandler(source),
+	signal_handler_connect(obs_source_get_signal_handler(source),
 		"volume_level", OBSVolumeLevel, this);
 
 	QWidget::connect(slider, SIGNAL(valueChanged(int)),
@@ -171,9 +162,90 @@ VolControl::VolControl(OBSSource source_)
 
 VolControl::~VolControl()
 {
-	signal_handler_disconnect(obs_source_signalhandler(source),
+	signal_handler_disconnect(obs_source_get_signal_handler(source),
 			"volume", OBSVolumeChanged, this);
 
-	signal_handler_disconnect(obs_source_signalhandler(source),
+	signal_handler_disconnect(obs_source_get_signal_handler(source),
 		"volume_level", OBSVolumeLevel, this);
+}
+
+VolumeMeter::VolumeMeter(QWidget *parent)
+			: QWidget(parent)
+{
+	setMinimumSize(1, 3);
+
+	bkColor.setRgb(0xDD, 0xDD, 0xDD);
+	magColor.setRgb(0x20, 0x7D, 0x17);
+	peakColor.setRgb(0x3E, 0xF1, 0x2B);
+	peakHoldColor.setRgb(0x00, 0x00, 0x00);
+	
+	resetTimer = new QTimer(this);
+	connect(resetTimer, SIGNAL(timeout()), this, SLOT(resetState()));
+
+	resetState();
+}
+
+void VolumeMeter::resetState(void)
+{
+	setLevels(0.0f, 0.0f, 0.0f);
+	if (resetTimer->isActive())
+		resetTimer->stop();
+}
+
+void VolumeMeter::setLevels(float nmag, float npeak, float npeakHold)
+{
+	mag      = nmag;
+	peak     = npeak;
+	peakHold = npeakHold;
+
+	update();
+
+	if (resetTimer->isActive())
+		resetTimer->stop();
+	resetTimer->start(250);
+
+}
+
+void VolumeMeter::paintEvent(QPaintEvent *event)
+{
+	UNUSED_PARAMETER(event);
+
+	QPainter painter(this);
+	QLinearGradient gradient;
+
+	int width  = size().width();
+	int height = size().height();
+
+	int scaledMag      = int((float)width * mag);
+	int scaledPeak     = int((float)width * peak);
+	int scaledPeakHold = int((float)width * peakHold);
+
+	gradient.setStart(qreal(scaledMag), 0);
+	gradient.setFinalStop(qreal(scaledPeak), 0);
+	gradient.setColorAt(0, magColor);
+	gradient.setColorAt(1, peakColor);
+
+	// RMS
+	painter.fillRect(0, 0, 
+			scaledMag, height,
+			magColor);
+
+	// RMS - Peak gradient
+	painter.fillRect(scaledMag, 0,
+			scaledPeak - scaledMag + 1, height,
+			QBrush(gradient));
+
+	// Background
+	painter.fillRect(scaledPeak, 0,
+			width - scaledPeak, height,
+			bkColor);
+
+	// Peak hold
+	if (peakHold == 1.0f)
+		scaledPeakHold--;
+
+	painter.setPen(peakHoldColor);
+	painter.drawLine(scaledPeakHold, 0,
+		scaledPeakHold, height);
+
 }

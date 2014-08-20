@@ -32,7 +32,7 @@ struct av_capture;
 
 #define AVLOG(level, format, ...) \
 	blog(level, "%s: " format, \
-			obs_source_getname(capture->source), ##__VA_ARGS__)
+			obs_source_get_name(capture->source), ##__VA_ARGS__)
 
 #define AVFREE(x) {[x release]; x = nil;}
 
@@ -71,7 +71,7 @@ struct av_capture {
 
 	obs_source_t source;
 
-	struct source_frame frame;
+	struct obs_source_frame frame;
 };
 
 static inline enum video_format format_from_subtype(FourCharCode subtype)
@@ -124,7 +124,7 @@ static inline enum video_colorspace get_colorspace(CMFormatDescriptionRef desc)
 }
 
 static inline bool update_colorspace(struct av_capture *capture,
-		struct source_frame *frame, CMFormatDescriptionRef desc,
+		struct obs_source_frame *frame, CMFormatDescriptionRef desc,
 		bool full_range)
 {
 	enum video_colorspace colorspace = get_colorspace(desc);
@@ -151,7 +151,7 @@ static inline bool update_colorspace(struct av_capture *capture,
 }
 
 static inline bool update_frame(struct av_capture *capture,
-		struct source_frame *frame, CMSampleBufferRef sample_buffer)
+		struct obs_source_frame *frame, CMSampleBufferRef sample_buffer)
 {
 	CMFormatDescriptionRef desc =
 		CMSampleBufferGetFormatDescription(sample_buffer);
@@ -170,7 +170,6 @@ static inline bool update_frame(struct av_capture *capture,
 		AVLOG(LOG_ERROR, "Unhandled fourcc: %s (0x%x) (%zu planes)",
 				AV_FOURCC_STR(fourcc), fourcc,
 				CVPixelBufferGetPlaneCount(img));
-		NSLog(@"%@", sample_buffer);
 		return false;
 	}
 
@@ -226,7 +225,7 @@ static inline bool update_frame(struct av_capture *capture,
 	if (count < 1 || !capture)
 		return;
 
-	struct source_frame *frame = &capture->frame;
+	struct obs_source_frame *frame = &capture->frame;
 
 	CMTime target_pts =
 		CMSampleBufferGetOutputPresentationTimeStamp(sampleBuffer);
@@ -284,7 +283,7 @@ static void av_capture_destroy(void *data)
 
 static NSString *get_string(obs_data_t data, char const *name)
 {
-	return @(obs_data_getstring(data, name));
+	return @(obs_data_get_string(data, name));
 }
 
 static bool init_session(struct av_capture *capture)
@@ -411,12 +410,12 @@ static void capture_device(struct av_capture *capture, AVCaptureDevice *dev,
 	capture->device = dev;
 
 	const char *name = capture->device.localizedName.UTF8String;
-	obs_data_setstring(settings, "device_name", name);
-	obs_data_setstring(settings, "device",
+	obs_data_set_string(settings, "device_name", name);
+	obs_data_set_string(settings, "device",
 			capture->device.uniqueID.UTF8String);
 	AVLOG(LOG_INFO, "Selected device '%s'", name);
 
-	if (obs_data_getbool(settings, "use_preset")) {
+	if (obs_data_get_bool(settings, "use_preset")) {
 		NSString *preset = get_string(settings, "preset");
 		if (![dev supportsAVCaptureSessionPreset:preset]) {
 			AVLOG(LOG_ERROR, "Preset %s not available",
@@ -708,7 +707,7 @@ static bool autoselect_preset(AVCaptureDevice *dev, obs_data_t settings)
 {
 	NSString *preset = get_string(settings, "preset");
 	if (!dev || [dev supportsAVCaptureSessionPreset:preset]) {
-		if (obs_data_has_autoselect(settings, "preset")) {
+		if (obs_data_has_autoselect_value(settings, "preset")) {
 			obs_data_unset_autoselect_value(settings, "preset");
 			return true;
 		}
@@ -825,7 +824,6 @@ static void av_capture_update(void *data, obs_data_t settings)
 		return switch_device(capture, uid, settings);
 
 	NSString *preset = get_string(settings, "preset");
-	NSLog(@"%@", preset);
 	if (![capture->device supportsAVCaptureSessionPreset:preset]) {
 		AVLOG(LOG_ERROR, "Preset %s not available", preset.UTF8String);
 		preset = select_preset(capture->device, preset);
@@ -836,14 +834,14 @@ static void av_capture_update(void *data, obs_data_t settings)
 }
 
 struct obs_source_info av_capture_info = {
-	.id           = "av_capture_input",
-	.type         = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_ASYNC_VIDEO,
-	.getname      = av_capture_getname,
-	.create       = av_capture_create,
-	.destroy      = av_capture_destroy,
-	.defaults     = av_capture_defaults,
-	.properties   = av_capture_properties,
-	.update       = av_capture_update,
+	.id             = "av_capture_input",
+	.type           = OBS_SOURCE_TYPE_INPUT,
+	.output_flags   = OBS_SOURCE_ASYNC_VIDEO,
+	.get_name       = av_capture_getname,
+	.create         = av_capture_create,
+	.destroy        = av_capture_destroy,
+	.get_defaults   = av_capture_defaults,
+	.get_properties = av_capture_properties,
+	.update         = av_capture_update,
 };
 

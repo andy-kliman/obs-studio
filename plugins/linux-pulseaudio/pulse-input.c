@@ -117,7 +117,7 @@ static void pulse_stream_read(pa_stream *p, size_t nbytes, void *userdata)
 		goto exit;
 	}
 
-	struct source_audio out;
+	struct obs_source_audio out;
 	out.speakers        = data->speakers;
 	out.samples_per_sec = data->samples_per_sec;
 	out.format          = pulse_to_obs_audio_format(data->format);
@@ -186,7 +186,7 @@ static int_fast32_t pulse_start_recording(struct pulse_data *data)
 
 	data->bytes_per_frame = pa_frame_size(&spec);
 
-	data->stream = pulse_stream_new(obs_source_getname(data->source),
+	data->stream = pulse_stream_new(obs_source_get_name(data->source),
 		&spec, NULL);
 	if (!data->stream) {
 		blog(LOG_ERROR, "pulse-input: Unable to create stream");
@@ -405,7 +405,7 @@ static void pulse_update(void *vptr, obs_data_t settings)
 	bool restart = false;
 	const char *new_device;
 
-	new_device = obs_data_getstring(settings, "device_id");
+	new_device = obs_data_get_string(settings, "device_id");
 	if (!data->device || strcmp(data->device, new_device) != 0) {
 		if (data->device)
 			bfree(data->device);
@@ -442,25 +442,25 @@ static void *pulse_create(obs_data_t settings, obs_source_t source)
 }
 
 struct obs_source_info pulse_input_capture = {
-	.id           = "pulse_input_capture",
-	.type         = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_AUDIO,
-	.getname      = pulse_input_getname,
-	.create       = pulse_create,
-	.destroy      = pulse_destroy,
-	.update       = pulse_update,
-	.defaults     = pulse_input_defaults,
-	.properties   = pulse_input_properties
+	.id             = "pulse_input_capture",
+	.type           = OBS_SOURCE_TYPE_INPUT,
+	.output_flags   = OBS_SOURCE_AUDIO,
+	.get_name       = pulse_input_getname,
+	.create         = pulse_create,
+	.destroy        = pulse_destroy,
+	.update         = pulse_update,
+	.get_defaults   = pulse_input_defaults,
+	.get_properties = pulse_input_properties
 };
 
 struct obs_source_info pulse_output_capture = {
-	.id           = "pulse_output_capture",
-	.type         = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_AUDIO,
-	.getname      = pulse_output_getname,
-	.create       = pulse_create,
-	.destroy      = pulse_destroy,
-	.update       = pulse_update,
-	.defaults     = pulse_output_defaults,
-	.properties   = pulse_output_properties
+	.id             = "pulse_output_capture",
+	.type           = OBS_SOURCE_TYPE_INPUT,
+	.output_flags   = OBS_SOURCE_AUDIO,
+	.get_name       = pulse_output_getname,
+	.create         = pulse_create,
+	.destroy        = pulse_destroy,
+	.update         = pulse_update,
+	.get_defaults   = pulse_output_defaults,
+	.get_properties = pulse_output_properties
 };

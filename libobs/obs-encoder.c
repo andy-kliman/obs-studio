@@ -18,7 +18,7 @@
 #include "obs.h"
 #include "obs-internal.h"
 
-static inline struct obs_encoder_info *get_encoder_info(const char *id)
+struct obs_encoder_info *find_encoder(const char *id)
 {
 	for (size_t i = 0; i < obs->encoder_types.num; i++) {
 		struct obs_encoder_info *info = obs->encoder_types.array+i;
@@ -30,10 +30,10 @@ static inline struct obs_encoder_info *get_encoder_info(const char *id)
 	return NULL;
 }
 
-const char *obs_encoder_getdisplayname(const char *id)
+const char *obs_encoder_get_display_name(const char *id)
 {
-	struct obs_encoder_info *ei = get_encoder_info(id);
-	return ei ? ei->getname() : NULL;
+	struct obs_encoder_info *ei = find_encoder(id);
+	return ei ? ei->get_name() : NULL;
 }
 
 static bool init_encoder(struct obs_encoder *encoder, const char *name,
@@ -49,8 +49,8 @@ static bool init_encoder(struct obs_encoder *encoder, const char *name,
 	if (pthread_mutex_init(&encoder->outputs_mutex, NULL) != 0)
 		return false;
 
-	if (encoder->info.defaults)
-		encoder->info.defaults(encoder->context.settings);
+	if (encoder->info.get_defaults)
+		encoder->info.get_defaults(encoder->context.settings);
 
 	return true;
 }
@@ -60,7 +60,7 @@ static struct obs_encoder *create_encoder(const char *id,
 		obs_data_t settings)
 {
 	struct obs_encoder *encoder;
-	struct obs_encoder_info *ei = get_encoder_info(id);
+	struct obs_encoder_info *ei = find_encoder(id);
 	bool success;
 
 	if (!ei || ei->type != type)
@@ -104,11 +104,11 @@ static inline struct audio_convert_info *get_audio_info(
 		struct obs_encoder *encoder, struct audio_convert_info *info)
 {
 	const struct audio_output_info *aoi;
-	aoi = audio_output_getinfo(encoder->media);
+	aoi = audio_output_get_info(encoder->media);
 	memset(info, 0, sizeof(struct audio_convert_info));
 
-	if (encoder->info.audio_info)
-		encoder->info.audio_info(encoder->context.data, info);
+	if (encoder->info.get_audio_info)
+		encoder->info.get_audio_info(encoder->context.data, info);
 
 	if (info->format == AUDIO_FORMAT_UNKNOWN)
 		info->format = aoi->format;
@@ -123,11 +123,21 @@ static inline struct audio_convert_info *get_audio_info(
 static inline struct video_scale_info *get_video_info(
 		struct obs_encoder *encoder, struct video_scale_info *info)
 {
-	if (encoder->info.video_info)
-		if (encoder->info.video_info(encoder->context.data, info))
+	if (encoder->info.get_video_info)
+		if (encoder->info.get_video_info(encoder->context.data, info))
 			return info;
 
 	return NULL;
+}
+
+static inline bool has_scaling(struct obs_encoder *encoder)
+{
+	uint32_t video_width  = video_output_get_width(encoder->media);
+	uint32_t video_height = video_output_get_height(encoder->media);
+
+	return encoder->scaled_width && encoder->scaled_height &&
+		(video_width  != encoder->scaled_width ||
+		 video_height != encoder->scaled_height);
 }
 
 static void add_connection(struct obs_encoder *encoder)
@@ -140,11 +150,23 @@ static void add_connection(struct obs_encoder *encoder)
 		audio_output_connect(encoder->media, &audio_info, receive_audio,
 				encoder);
 	} else {
-		struct video_scale_info *info = NULL;
+		struct video_scale_info *info =
+			get_video_info(encoder, &video_info);
 
-		info = get_video_info(encoder, &video_info);
+		if (!info && has_scaling(encoder)) {
+			info = &video_info;
+			info->format = video_output_get_format(encoder->media);
+			info->colorspace = VIDEO_CS_DEFAULT;
+			info->range      = VIDEO_RANGE_DEFAULT;
+		}
+
+		if (info && (!info->width || !info->height)) {
+			info->width  = obs_encoder_get_width(encoder);
+			info->height = obs_encoder_get_height(encoder);
+		}
+
 		video_output_connect(encoder->media, info, receive_video,
-				encoder);
+			encoder);
 	}
 
 	encoder->active = true;
@@ -216,7 +238,7 @@ void obs_encoder_destroy(obs_encoder_t encoder)
 	}
 }
 
-const char *obs_encoder_getname(obs_encoder_t encoder)
+const char *obs_encoder_get_name(obs_encoder_t encoder)
 {
 	return encoder ? encoder->context.name : NULL;
 }
@@ -224,25 +246,25 @@ const char *obs_encoder_getname(obs_encoder_t encoder)
 static inline obs_data_t get_defaults(const struct obs_encoder_info *info)
 {
 	obs_data_t settings = obs_data_create();
-	if (info->defaults)
-		info->defaults(settings);
+	if (info->get_defaults)
+		info->get_defaults(settings);
 	return settings;
 }
 
 obs_data_t obs_encoder_defaults(const char *id)
 {
-	const struct obs_encoder_info *info = get_encoder_info(id);
+	const struct obs_encoder_info *info = find_encoder(id);
 	return (info) ? get_defaults(info) : NULL;
 }
 
 obs_properties_t obs_get_encoder_properties(const char *id)
 {
-	const struct obs_encoder_info *ei = get_encoder_info(id);
-	if (ei && ei->properties) {
+	const struct obs_encoder_info *ei = find_encoder(id);
+	if (ei && ei->get_properties) {
 		obs_data_t       defaults = get_defaults(ei);
 		obs_properties_t properties;
 
-		properties = ei->properties();
+		properties = ei->get_properties();
 		obs_properties_apply_settings(properties, defaults);
 		obs_data_release(defaults);
 		return properties;
@@ -252,9 +274,9 @@ obs_properties_t obs_get_encoder_properties(const char *id)
 
 obs_properties_t obs_encoder_properties(obs_encoder_t encoder)
 {
-	if (encoder && encoder->info.properties) {
+	if (encoder && encoder->info.get_properties) {
 		obs_properties_t props;
-		props = encoder->info.properties();
+		props = encoder->info.get_properties();
 		obs_properties_apply_settings(props, encoder->context.settings);
 		return props;
 	}
@@ -275,8 +297,8 @@ void obs_encoder_update(obs_encoder_t encoder, obs_data_t settings)
 bool obs_encoder_get_extra_data(obs_encoder_t encoder, uint8_t **extra_data,
 		size_t *size)
 {
-	if (encoder && encoder->info.extra_data && encoder->context.data)
-		return encoder->info.extra_data(encoder->context.data,
+	if (encoder && encoder->info.get_extra_data && encoder->context.data)
+		return encoder->info.get_extra_data(encoder->context.data,
 				extra_data, size);
 
 	return false;
@@ -307,7 +329,8 @@ static void intitialize_audio_encoder(struct obs_encoder *encoder)
 	encoder->samplerate = info.samples_per_sec;
 	encoder->planes     = get_audio_planes(info.format, info.speakers);
 	encoder->blocksize  = get_audio_size(info.format, info.speakers, 1);
-	encoder->framesize  = encoder->info.frame_size(encoder->context.data);
+	encoder->framesize  = encoder->info.get_frame_size(
+			encoder->context.data);
 
 	encoder->framesize_bytes = encoder->blocksize * encoder->framesize;
 	reset_audio_buffers(encoder);
@@ -409,6 +432,45 @@ const char *obs_encoder_get_codec(obs_encoder_t encoder)
 	return encoder ? encoder->info.codec : NULL;
 }
 
+void obs_encoder_set_scaled_size(obs_encoder_t encoder, uint32_t width,
+		uint32_t height)
+{
+	if (!encoder || encoder->info.type != OBS_ENCODER_VIDEO)
+		return;
+
+	if (encoder->active) {
+		blog(LOG_WARNING, "encoder '%s': Cannot set the scaled "
+		                  "resolution while the encoder is active",
+		                  obs_encoder_get_name(encoder));
+		return;
+	}
+
+	encoder->scaled_width  = width;
+	encoder->scaled_height = height;
+}
+
+uint32_t obs_encoder_get_width(obs_encoder_t encoder)
+{
+	if (!encoder || !encoder->media ||
+	    encoder->info.type != OBS_ENCODER_VIDEO)
+		return 0;
+
+	return encoder->scaled_width != 0 ?
+		encoder->scaled_width :
+		video_output_get_width(encoder->media);
+}
+
+uint32_t obs_encoder_get_height(obs_encoder_t encoder)
+{
+	if (!encoder || !encoder->media ||
+	    encoder->info.type != OBS_ENCODER_VIDEO)
+		return 0;
+
+	return encoder->scaled_width != 0 ?
+		encoder->scaled_height :
+		video_output_get_height(encoder->media);
+}
+
 void obs_encoder_set_video(obs_encoder_t encoder, video_t video)
 {
 	const struct video_output_info *voi;
@@ -416,7 +478,7 @@ void obs_encoder_set_video(obs_encoder_t encoder, video_t video)
 	if (!video || !encoder || encoder->info.type != OBS_ENCODER_VIDEO)
 		return;
 
-	voi = video_output_getinfo(video);
+	voi = video_output_get_info(video);
 
 	encoder->media        = video;
 	encoder->timebase_num = voi->fps_den;
@@ -430,7 +492,7 @@ void obs_encoder_set_audio(obs_encoder_t encoder, audio_t audio)
 
 	encoder->media        = audio;
 	encoder->timebase_num = 1;
-	encoder->timebase_den = audio_output_samplerate(audio);
+	encoder->timebase_den = audio_output_get_sample_rate(audio);
 }
 
 video_t obs_encoder_video(obs_encoder_t encoder)
@@ -453,8 +515,9 @@ bool obs_encoder_active(obs_encoder_t encoder)
 static inline bool get_sei(struct obs_encoder *encoder,
 		uint8_t **sei, size_t *size)
 {
-	if (encoder->info.sei_data)
-		return encoder->info.sei_data(encoder->context.data, sei, size);
+	if (encoder->info.get_sei_data)
+		return encoder->info.get_sei_data(encoder->context.data, sei,
+				size);
 	return false;
 }
 

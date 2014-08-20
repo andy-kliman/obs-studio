@@ -80,7 +80,7 @@ EXPORT void dstr_ncopy_dstr(struct dstr *dst, const struct dstr *src,
 static inline void dstr_resize(struct dstr *dst, const size_t num);
 static inline void dstr_reserve(struct dstr *dst, const size_t num);
 
-static inline bool dstr_isempty(const struct dstr *str);
+static inline bool dstr_is_empty(const struct dstr *str);
 
 static inline void dstr_cat(struct dstr *dst, const char *array);
 EXPORT void dstr_cat_dstr(struct dstr *dst, const struct dstr *str);
@@ -134,6 +134,8 @@ EXPORT void dstr_mid(struct dstr *dst, const struct dstr *str,
 		const size_t start, const size_t count);
 EXPORT void dstr_right(struct dstr *dst, const struct dstr *str,
 		const size_t pos);
+
+static inline char dstr_end(const struct dstr *str);
 
 EXPORT void dstr_from_mbs(struct dstr *dst, const char *mbstr);
 EXPORT char *dstr_to_mbs(const struct dstr *str);
@@ -247,7 +249,7 @@ static inline void dstr_resize(struct dstr *dst, const size_t num)
 	dst->len = num;
 }
 
-static inline bool dstr_isempty(const struct dstr *str)
+static inline bool dstr_is_empty(const struct dstr *str)
 {
 	if (!str->array || !str->len)
 		return true;
@@ -304,6 +306,14 @@ static inline int dstr_ncmpi(const struct dstr *str1, const char *str2,
 		const size_t n)
 {
 	return astrcmpi_n(str1->array, str2, n);
+}
+
+static inline char dstr_end(const struct dstr *str)
+{
+	if (dstr_is_empty(str))
+		return 0;
+
+	return str->array[str->len - 1];
 }
 
 #ifdef __cplusplus

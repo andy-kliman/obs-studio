@@ -92,8 +92,8 @@ static void *libfdk_create(obs_data_t settings, obs_encoder_t encoder)
 {
 	bool hasFdkHandle = false;
 	libfdk_encoder_t *enc = 0;
-	int bitrate = (int)obs_data_getint(settings, "bitrate") * 1000;
-	int afterburner = obs_data_getbool(settings, "afterburner") ? 1 : 0;
+	int bitrate = (int)obs_data_get_int(settings, "bitrate") * 1000;
+	int afterburner = obs_data_get_bool(settings, "afterburner") ? 1 : 0;
 	audio_t audio = obs_encoder_audio(encoder);
 	int mode = 0;
 	AACENC_ERROR err;
@@ -106,8 +106,8 @@ static void *libfdk_create(obs_data_t settings, obs_encoder_t encoder)
 	enc = bzalloc(sizeof(libfdk_encoder_t));
 	enc->encoder = encoder;
 
-	enc->channels = (int)audio_output_channels(audio);
-	enc->sample_rate = audio_output_samplerate(audio);
+	enc->channels = (int)audio_output_get_channels(audio);
+	enc->sample_rate = audio_output_get_sample_rate(audio);
 
 	switch(enc->channels) {
 	case 1:
@@ -289,33 +289,25 @@ static size_t libfdk_frame_size(void *data)
 }
 
 struct obs_encoder_info obs_libfdk_encoder = {
-	.id         = "libfdk_aac",
-	.type       = OBS_ENCODER_AUDIO,
-	.codec      = "AAC",
-	.getname    = libfdk_getname,
-	.create     = libfdk_create,
-	.destroy    = libfdk_destroy,
-	.encode     = libfdk_encode,
-	.frame_size = libfdk_frame_size,
-	.defaults   = libfdk_defaults,
-	.properties = libfdk_properties,
-	.extra_data = libfdk_extra_data,
-	.audio_info = libfdk_audio_info
+	.id             = "libfdk_aac",
+	.type           = OBS_ENCODER_AUDIO,
+	.codec          = "AAC",
+	.get_name       = libfdk_getname,
+	.create         = libfdk_create,
+	.destroy        = libfdk_destroy,
+	.encode         = libfdk_encode,
+	.get_frame_size = libfdk_frame_size,
+	.get_defaults   = libfdk_defaults,
+	.get_properties = libfdk_properties,
+	.get_extra_data = libfdk_extra_data,
+	.get_audio_info = libfdk_audio_info
 };
 
-bool obs_module_load(uint32_t libobs_ver)
+bool obs_module_load(void)
 {
-	UNUSED_PARAMETER(libobs_ver);
-
 	obs_register_encoder(&obs_libfdk_encoder);
-
 	return true;
 }
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-libfdk", "en-US")
-
-void obs_module_unload(void)
-{
-	OBS_MODULE_FREE_DEFAULT_LOCALE();
-}

@@ -219,7 +219,7 @@ void OBSBasicSettings::LoadServiceTypes()
 	size_t        idx = 0;
 
 	while (obs_enum_service_types(idx++, &type)) {
-		const char *name = obs_service_getdisplayname(type);
+		const char *name = obs_service_get_display_name(type);
 		QString qName = QT_UTF8(name);
 		QString qType = QT_UTF8(type);
 
@@ -405,7 +405,7 @@ void OBSBasicSettings::LoadVideoSettings()
 {
 	loading = true;
 
-	if (video_output_active(obs_video())) {
+	if (video_output_active(obs_get_video())) {
 		ui->videoPage->setEnabled(false);
 		ui->videoMsg->setText(
 				QTStr("Basic.Settings.Video.CurrentlyActive"));

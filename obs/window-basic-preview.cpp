@@ -23,10 +23,12 @@ OBSBasicPreview::OBSBasicPreview(QWidget *parent, Qt::WindowFlags flags)
 vec2 OBSBasicPreview::GetMouseEventPos(QMouseEvent *event)
 {
 	OBSBasic *main = reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
+	float pixelRatio = main->devicePixelRatio();
+	float scale = pixelRatio / main->previewScale;
 	vec2 pos;
 	vec2_set(&pos,
-		(float(event->x()) - main->previewX) / main->previewScale,
-		(float(event->y()) - main->previewY) / main->previewScale);
+		(float(event->x()) - main->previewX / pixelRatio) * scale,
+		(float(event->y()) - main->previewY / pixelRatio) * scale);
 
 	return pos;
 }
@@ -49,7 +51,7 @@ struct SceneFindData {
 
 static bool SceneItemHasVideo(obs_sceneitem_t item)
 {
-	obs_source_t source = obs_sceneitem_getsource(item);
+	obs_source_t source = obs_sceneitem_get_source(item);
 	uint32_t flags = obs_source_get_output_flags(source);
 	return (flags & OBS_SOURCE_VIDEO) != 0;
 }
@@ -269,12 +271,12 @@ static vec2 GetItemSize(obs_sceneitem_t item)
 	if (boundsType != OBS_BOUNDS_NONE) {
 		obs_sceneitem_get_bounds(item, &size);
 	} else {
-		obs_source_t source = obs_sceneitem_getsource(item);
+		obs_source_t source = obs_sceneitem_get_source(item);
 		vec2 scale;
 
-		obs_sceneitem_getscale(item, &scale);
-		size.x = float(obs_source_getwidth(source))  * scale.x;
-		size.y = float(obs_source_getheight(source)) * scale.y;
+		obs_sceneitem_get_scale(item, &scale);
+		size.x = float(obs_source_get_width(source))  * scale.x;
+		size.y = float(obs_source_get_height(source)) * scale.y;
 	}
 
 	return size;
@@ -288,7 +290,7 @@ void OBSBasicPreview::GetStretchHandleData(const vec2 &pos)
 	if (!scene)
 		return;
 
-	HandleFindData data(pos, main->previewScale);
+	HandleFindData data(pos, main->previewScale / main->devicePixelRatio());
 	obs_scene_enum_items(scene, FindHandleAtPos, &data);
 
 	stretchItem     = std::move(data.item);
@@ -302,7 +304,7 @@ void OBSBasicPreview::GetStretchHandleData(const vec2 &pos)
 		stretchItemSize = GetItemSize(stretchItem);
 
 		obs_sceneitem_get_box_transform(stretchItem, &boxTransform);
-		itemRot = obs_sceneitem_getrot(stretchItem);
+		itemRot = obs_sceneitem_get_rot(stretchItem);
 		vec3_from_vec4(&itemUL, &boxTransform.t);
 
 		/* build the item space conversion matrices */
@@ -323,8 +325,9 @@ void OBSBasicPreview::GetStretchHandleData(const vec2 &pos)
 void OBSBasicPreview::mousePressEvent(QMouseEvent *event)
 {
 	OBSBasic *main = reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
-	float x = float(event->x()) - main->previewX;
-	float y = float(event->y()) - main->previewY;
+	float pixelRatio = main->devicePixelRatio();
+	float x = float(event->x()) - main->previewX / pixelRatio;
+	float y = float(event->y()) - main->previewY / pixelRatio;
 
 	if (event->button() != Qt::LeftButton)
 		return;
@@ -334,7 +337,7 @@ void OBSBasicPreview::mousePressEvent(QMouseEvent *event)
 	vec2_set(&startPos, x, y);
 	GetStretchHandleData(startPos);
 
-	vec2_divf(&startPos, &startPos, main->previewScale);
+	vec2_divf(&startPos, &startPos, main->previewScale / pixelRatio);
 	startPos.x = std::round(startPos.x);
 	startPos.y = std::round(startPos.y);
 
@@ -457,9 +460,9 @@ static bool move_items(obs_scene_t scene, obs_sceneitem_t item, void *param)
 
 	if (obs_sceneitem_selected(item)) {
 		vec2 pos;
-		obs_sceneitem_getpos(item, &pos);
+		obs_sceneitem_get_pos(item, &pos);
 		vec2_add(&pos, &pos, offset);
-		obs_sceneitem_setpos(item, &pos);
+		obs_sceneitem_set_pos(item, &pos);
 	}
 
 	UNUSED_PARAMETER(scene);
@@ -486,7 +489,7 @@ void OBSBasicPreview::MoveItems(const vec2 &pos)
 
 vec3 OBSBasicPreview::CalculateStretchPos(const vec3 &tl, const vec3 &br)
 {
-	uint32_t alignment = obs_sceneitem_getalignment(stretchItem);
+	uint32_t alignment = obs_sceneitem_get_alignment(stretchItem);
 	vec3 pos;
 
 	vec3_zero(&pos);
@@ -610,12 +613,12 @@ void OBSBasicPreview::StretchItem(const vec2 &pos)
 	if (!(modifiers & Qt::ControlModifier))
 		SnapStretchingToScreen(tl, br);
 
-	obs_source_t source = obs_sceneitem_getsource(stretchItem);
+	obs_source_t source = obs_sceneitem_get_source(stretchItem);
 
 	vec2 baseSize;
 	vec2_set(&baseSize,
-		float(obs_source_getwidth(source)),
-		float(obs_source_getheight(source)));
+		float(obs_source_get_width(source)),
+		float(obs_source_get_height(source)));
 
 	vec2 size;
 	vec2_set(&size,br. x - tl.x, br.y - tl.y);
@@ -635,7 +638,7 @@ void OBSBasicPreview::StretchItem(const vec2 &pos)
 			ClampAspect(tl, br, size, baseSize);
 
 		vec2_div(&size, &size, &baseSize);
-		obs_sceneitem_setscale(stretchItem, &size);
+		obs_sceneitem_set_scale(stretchItem, &size);
 	}
 
 	pos3 = CalculateStretchPos(tl, br);
@@ -643,7 +646,7 @@ void OBSBasicPreview::StretchItem(const vec2 &pos)
 
 	vec2 newPos;
 	vec2_set(&newPos, std::round(pos3.x), std::round(pos3.y));
-	obs_sceneitem_setpos(stretchItem, &newPos);
+	obs_sceneitem_set_pos(stretchItem, &newPos);
 }
 
 void OBSBasicPreview::mouseMoveEvent(QMouseEvent *event)
@@ -726,15 +729,15 @@ void OBSBasicPreview::DrawSceneEditing()
 {
 	OBSBasic *main = reinterpret_cast<OBSBasic*>(App()->GetMainWindow());
 
-	effect_t    solid = obs_get_solid_effect();
-	technique_t tech  = effect_gettechnique(solid, "Solid");
+	gs_effect_t    solid = obs_get_solid_effect();
+	gs_technique_t tech  = gs_effect_get_technique(solid, "Solid");
 
 	vec4 color;
 	vec4_set(&color, 1.0f, 0.0f, 0.0f, 1.0f);
-	effect_setvec4(effect_getparambyname(solid, "color"), &color);
+	gs_effect_set_vec4(gs_effect_get_param_by_name(solid, "color"), &color);
 
-	technique_begin(tech);
-	technique_beginpass(tech, 0);
+	gs_technique_begin(tech);
+	gs_technique_begin_pass(tech, 0);
 
 	OBSScene scene = main->GetCurrentScene();
 	if (scene)
@@ -742,6 +745,6 @@ void OBSBasicPreview::DrawSceneEditing()
 
 	gs_load_vertexbuffer(nullptr);
 
-	technique_endpass(tech);
-	technique_end(tech);
+	gs_technique_end_pass(tech);
+	gs_technique_end(tech);
 }

@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdint.h>
 #include <X11/extensions/Xfixes.h>
 
+#include <graphics/matrix4.h>
 #include <util/bmem.h>
 #include "xcursor.h"
 
@@ -48,13 +49,13 @@ static void xcursor_create(xcursor_t *data, XFixesCursorImage *xc) {
 	if (data->tex
 	&& data->last_height == xc->width
 	&& data->last_width == xc->height) {
-		texture_setimage(data->tex, (const uint8_t *) pixels,
+		gs_texture_set_image(data->tex, (const uint8_t *) pixels,
 			xc->width * sizeof(uint32_t), False);
 	} else {
 		if (data->tex)
-			texture_destroy(data->tex);
+			gs_texture_destroy(data->tex);
 
-		data->tex = gs_create_texture(xc->width, xc->height,
+		data->tex = gs_texture_create(xc->width, xc->height,
 			GS_BGRA, 1, (const uint8_t **) &pixels, GS_DYNAMIC);
 	}
 
@@ -76,7 +77,7 @@ xcursor_t *xcursor_init(Display *dpy) {
 
 void xcursor_destroy(xcursor_t *data) {
 	if (data->tex)
-		texture_destroy(data->tex);
+		gs_texture_destroy(data->tex);
 	bfree(data);
 }
 
@@ -85,25 +86,28 @@ void xcursor_tick(xcursor_t *data) {
 
 	if (!data->tex || data->last_serial != xc->cursor_serial)
 		xcursor_create(data, xc);
-	data->pos_x = -1.0 * (xc->x - xc->xhot - data->x_org);
-	data->pos_y = -1.0 * (xc->y - xc->yhot - data->y_org);
+	data->pos_x = xc->x - xc->xhot - data->x_org;
+	data->pos_y = xc->y - xc->yhot - data->y_org;
 
 	XFree(xc);
 }
 
 void xcursor_render(xcursor_t *data) {
-	/* TODO: why do i need effects ? */
-	effect_t effect  = gs_geteffect();
-	eparam_t image = effect_getparambyname(effect, "image");
+	struct matrix4 trans;
 
-	effect_settexture(image, data->tex);
+	gs_effect_t effect  = gs_get_effect();
+	gs_eparam_t image = gs_effect_get_param_by_name(effect, "image");
+	gs_effect_set_texture(image, data->tex);
 
 	gs_matrix_push();
 
-	gs_matrix_translate3f(-data->pos_x, -data->pos_y, 0);
+	gs_matrix_get(&trans);
+	gs_matrix_identity();
+	gs_matrix_translate3f(data->pos_x, data->pos_y, 0.0f);
+	gs_matrix_mul(&trans);
 
 	gs_enable_blending(True);
-	gs_blendfunction(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
+	gs_blend_function(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA);
 	gs_draw_sprite(data->tex, 0, 0, 0);
 
 	gs_matrix_pop();

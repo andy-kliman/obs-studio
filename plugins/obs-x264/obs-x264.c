@@ -19,11 +19,16 @@
 #include <util/dstr.h>
 #include <util/darray.h>
 #include <obs-module.h>
+
+#ifndef _STDINT_H_INCLUDED
+#define _STDINT_H_INCLUDED
+#endif
+
 #include <x264.h>
 
 #define do_log(level, format, ...) \
 	blog(level, "[x264 encoder: '%s'] " format, \
-			obs_encoder_getname(obsx264->encoder), ##__VA_ARGS__)
+			obs_encoder_get_name(obsx264->encoder), ##__VA_ARGS__)
 
 #define warn(format, ...)  do_log(LOG_WARNING, format, ##__VA_ARGS__)
 #define info(format, ...)  do_log(LOG_INFO,    format, ##__VA_ARGS__)
@@ -230,13 +235,15 @@ static void update_params(struct obs_x264 *obsx264, obs_data_t settings,
 		char **params)
 {
 	video_t video = obs_encoder_video(obsx264->encoder);
-	const struct video_output_info *voi = video_output_getinfo(video);
+	const struct video_output_info *voi = video_output_get_info(video);
 
-	int bitrate      = (int)obs_data_getint(settings, "bitrate");
-	int buffer_size  = (int)obs_data_getint(settings, "buffer_size");
-	int keyint_sec   = (int)obs_data_getint(settings, "keyint_sec");
-	int crf          = (int)obs_data_getint(settings, "crf");
-	bool cbr         = obs_data_getbool(settings, "cbr");
+	int bitrate      = (int)obs_data_get_int(settings, "bitrate");
+	int buffer_size  = (int)obs_data_get_int(settings, "buffer_size");
+	int keyint_sec   = (int)obs_data_get_int(settings, "keyint_sec");
+	int crf          = (int)obs_data_get_int(settings, "crf");
+	int width        = (int)obs_encoder_get_width(obsx264->encoder);
+	int height       = (int)obs_encoder_get_height(obsx264->encoder);
+	bool cbr         = obs_data_get_bool(settings, "cbr");
 
 	if (keyint_sec)
 		obsx264->params.i_keyint_max =
@@ -246,8 +253,8 @@ static void update_params(struct obs_x264 *obsx264, obs_data_t settings,
 	obsx264->params.rc.i_vbv_max_bitrate = bitrate;
 	obsx264->params.rc.i_vbv_buffer_size = buffer_size;
 	obsx264->params.rc.i_bitrate         = bitrate;
-	obsx264->params.i_width              = voi->width;
-	obsx264->params.i_height             = voi->height;
+	obsx264->params.i_width              = width;
+	obsx264->params.i_height             = height;
 	obsx264->params.i_fps_num            = voi->fps_num;
 	obsx264->params.i_fps_den            = voi->fps_den;
 	obsx264->params.pf_log               = log_x264;
@@ -259,9 +266,12 @@ static void update_params(struct obs_x264 *obsx264, obs_data_t settings,
 	     "\tbuffer size: %d\n"
 	     "\tfps_num:     %d\n"
 	     "\tfps_den:     %d\n"
+	     "\twidth:       %d\n"
+	     "\theight:      %d\n"
 	     "\tkeyint:      %d\n"
 	     "\tcbr:         %s",
 	     bitrate, buffer_size, voi->fps_num, voi->fps_den,
+	     width, height,
 	     obsx264->params.i_keyint_max,
 	     cbr ? "on" : "off");
 
@@ -269,10 +279,10 @@ static void update_params(struct obs_x264 *obsx264, obs_data_t settings,
 	 * the bitrate */
 	if (cbr) {
 		obsx264->params.rc.f_rf_constant = 0.0f;
+		obsx264->params.rc.i_rc_method   = X264_RC_ABR;
 
 #if X264_BUILD >= 139
 		obsx264->params.rc.b_filler      = true;
-		obsx264->params.rc.i_rc_method   = X264_RC_ABR;
 #else
 		obsx264->params.i_nal_hrd        = X264_NAL_HRD_CBR;
 #endif
@@ -294,10 +304,10 @@ static void update_params(struct obs_x264 *obsx264, obs_data_t settings,
 
 static bool update_settings(struct obs_x264 *obsx264, obs_data_t settings)
 {
-	char *preset     = bstrdup(obs_data_getstring(settings, "preset"));
-	char *profile    = bstrdup(obs_data_getstring(settings, "profile"));
-	char *tune       = bstrdup(obs_data_getstring(settings, "tune"));
-	const char *opts = obs_data_getstring(settings, "x264opts");
+	char *preset     = bstrdup(obs_data_get_string(settings, "preset"));
+	char *profile    = bstrdup(obs_data_get_string(settings, "profile"));
+	char *tune       = bstrdup(obs_data_get_string(settings, "tune"));
+	const char *opts = obs_data_get_string(settings, "x264opts");
 
 	char **paramlist;
 	bool success = true;
@@ -491,7 +501,7 @@ static bool obs_x264_video_info(void *data, struct video_scale_info *info)
 {
 	struct obs_x264 *obsx264 = data;
 	video_t video = obs_encoder_video(obsx264->encoder);
-	const struct video_output_info *vid_info = video_output_getinfo(video);
+	const struct video_output_info *vid_info = video_output_get_info(video);
 
 	if (vid_info->format == VIDEO_FORMAT_I420 ||
 	    vid_info->format == VIDEO_FORMAT_NV12)
@@ -506,17 +516,17 @@ static bool obs_x264_video_info(void *data, struct video_scale_info *info)
 }
 
 struct obs_encoder_info obs_x264_encoder = {
-	.id         = "obs_x264",
-	.type       = OBS_ENCODER_VIDEO,
-	.codec      = "h264",
-	.getname    = obs_x264_getname,
-	.create     = obs_x264_create,
-	.destroy    = obs_x264_destroy,
-	.encode     = obs_x264_encode,
-	.properties = obs_x264_props,
-	.defaults   = obs_x264_defaults,
-	.update     = obs_x264_update,
-	.extra_data = obs_x264_extra_data,
-	.sei_data   = obs_x264_sei,
-	.video_info = obs_x264_video_info
+	.id             = "obs_x264",
+	.type           = OBS_ENCODER_VIDEO,
+	.codec          = "h264",
+	.get_name       = obs_x264_getname,
+	.create         = obs_x264_create,
+	.destroy        = obs_x264_destroy,
+	.encode         = obs_x264_encode,
+	.update         = obs_x264_update,
+	.get_properties = obs_x264_props,
+	.get_defaults   = obs_x264_defaults,
+	.get_extra_data = obs_x264_extra_data,
+	.get_sei_data   = obs_x264_sei,
+	.get_video_info = obs_x264_video_info
 };

@@ -22,6 +22,7 @@
 #include "util/circlebuf.h"
 #include "util/dstr.h"
 #include "util/threading.h"
+#include "util/platform.h"
 #include "callback/signal.h"
 #include "callback/proc.h"
 
@@ -50,12 +51,48 @@ struct draw_callback {
 /* modules */
 
 struct obs_module {
-	char *name;
+	const char *file;
+	char *bin_path;
+	char *data_path;
 	void *module;
-	void (*set_locale)(const char *locale);
+	bool loaded;
+
+	bool        (*load)(void);
+	void        (*unload)(void);
+	void        (*set_locale)(const char *locale);
+	void        (*free_locale)(void);
+	uint32_t    (*ver)(void);
+	void        (*set_pointer)(obs_module_t module);
+	const char *(*name)(void);
+	const char *(*description)(void);
+	const char *(*author)(void);
+
+	struct obs_module *next;
 };
 
 extern void free_module(struct obs_module *mod);
+
+struct obs_module_path {
+	char *bin;
+	char *data;
+};
+
+static inline void free_module_path(struct obs_module_path *omp)
+{
+	if (omp) {
+		bfree(omp->bin);
+		bfree(omp->data);
+	}
+}
+
+static inline bool check_path(const char *data, const char *path,
+		struct dstr *output)
+{
+	dstr_copy(output, path);
+	dstr_cat(output, data);
+
+	return os_file_exists(output->array);
+}
 
 
 /* ------------------------------------------------------------------------- */
@@ -76,7 +113,7 @@ extern void obs_view_free(struct obs_view *view);
 struct obs_display {
 	bool                            size_changed;
 	uint32_t                        cx, cy;
-	swapchain_t                     swap;
+	gs_swapchain_t                  swap;
 	pthread_mutex_t                 draw_callbacks_mutex;
 	DARRAY(struct draw_callback)    draw_callbacks;
 
@@ -94,19 +131,19 @@ extern void obs_display_free(struct obs_display *display);
 
 struct obs_core_video {
 	graphics_t                      graphics;
-	stagesurf_t                     copy_surfaces[NUM_TEXTURES];
-	texture_t                       render_textures[NUM_TEXTURES];
-	texture_t                       output_textures[NUM_TEXTURES];
-	texture_t                       convert_textures[NUM_TEXTURES];
+	gs_stagesurf_t                  copy_surfaces[NUM_TEXTURES];
+	gs_texture_t                    render_textures[NUM_TEXTURES];
+	gs_texture_t                    output_textures[NUM_TEXTURES];
+	gs_texture_t                    convert_textures[NUM_TEXTURES];
 	bool                            textures_rendered[NUM_TEXTURES];
 	bool                            textures_output[NUM_TEXTURES];
 	bool                            textures_copied[NUM_TEXTURES];
 	bool                            textures_converted[NUM_TEXTURES];
-	struct source_frame             convert_frames[NUM_TEXTURES];
-	effect_t                        default_effect;
-	effect_t                        solid_effect;
-	effect_t                        conversion_effect;
-	stagesurf_t                     mapped_surface;
+	struct obs_source_frame         convert_frames[NUM_TEXTURES];
+	gs_effect_t                     default_effect;
+	gs_effect_t                     solid_effect;
+	gs_effect_t                     conversion_effect;
+	gs_stagesurf_t                  mapped_surface;
 	int                             cur_texture;
 
 	video_t                         video;
@@ -161,7 +198,9 @@ struct obs_core_data {
 };
 
 struct obs_core {
-	DARRAY(struct obs_module)       modules;
+	struct obs_module               *first_module;
+	DARRAY(struct obs_module_path)  module_paths;
+
 	DARRAY(struct obs_source_info)  input_types;
 	DARRAY(struct obs_source_info)  filter_types;
 	DARRAY(struct obs_source_info)  transition_types;
@@ -228,6 +267,9 @@ struct obs_source {
 	struct obs_source_info          info;
 	volatile long                   refs;
 
+	/* indicates ownership of the info.id buffer */
+	bool                            owns_info_id;
+
 	/* signals to call the source update in the video thread */
 	bool                            defer_update;
 
@@ -277,7 +319,7 @@ struct obs_source {
 	audio_resampler_t               resampler;
 	audio_line_t                    audio_line;
 	pthread_mutex_t                 audio_mutex;
-	struct filtered_audio           audio_data;
+	struct obs_audio_data           audio_data;
 	size_t                          audio_storage_size;
 	float                           user_volume;
 	float                           present_volume;
@@ -297,8 +339,8 @@ struct obs_source {
 	float                           transition_volume;
 
 	/* async video data */
-	texture_t                       async_texture;
-	texrender_t                     async_convert_texrender;
+	gs_texture_t                    async_texture;
+	gs_texrender_t                  async_convert_texrender;
 	bool                            async_gpu_conversion;
 	enum video_format               async_format;
 	enum gs_color_format            async_texture_format;
@@ -308,7 +350,7 @@ struct obs_source {
 	float                           async_color_range_max[3];
 	int                             async_plane_offset[2];
 	bool                            async_flip;
-	DARRAY(struct source_frame*)    video_frames;
+	DARRAY(struct obs_source_frame*)video_frames;
 	pthread_mutex_t                 video_mutex;
 	uint32_t                        async_width;
 	uint32_t                        async_height;
@@ -320,10 +362,12 @@ struct obs_source {
 	struct obs_source               *filter_target;
 	DARRAY(struct obs_source*)      filters;
 	pthread_mutex_t                 filter_mutex;
-	texrender_t                     filter_texrender;
+	gs_texrender_t                  filter_texrender;
 	bool                            rendering_filter;
 };
 
+extern const struct obs_source_info *find_source(struct darray *list,
+		const char *id);
 extern bool obs_source_init_context(struct obs_source *source,
 		obs_data_t settings, const char *name);
 extern bool obs_source_init(struct obs_source *source,
@@ -375,6 +419,9 @@ struct obs_output {
 	obs_encoder_t                   audio_encoder;
 	obs_service_t                   service;
 
+	uint32_t                        scaled_width;
+	uint32_t                        scaled_height;
+
 	bool                            video_conversion_set;
 	bool                            audio_conversion_set;
 	struct video_scale_info         video_conversion;
@@ -382,6 +429,8 @@ struct obs_output {
 
 	bool                            valid;
 };
+
+extern const struct obs_output_info *find_output(const char *id);
 
 extern void obs_output_remove_encoder(struct obs_output *output,
 		struct obs_encoder *encoder);
@@ -405,6 +454,9 @@ struct obs_encoder {
 	size_t                          blocksize;
 	size_t                          framesize;
 	size_t                          framesize_bytes;
+
+	uint32_t                        scaled_width;
+	uint32_t                        scaled_height;
 
 	bool                            active;
 
@@ -436,6 +488,8 @@ struct obs_encoder {
 	DARRAY(struct encoder_callback) callbacks;
 };
 
+extern struct obs_encoder_info *find_encoder(const char *id);
+
 extern bool obs_encoder_initialize(obs_encoder_t encoder);
 
 extern void obs_encoder_start(obs_encoder_t encoder,
@@ -461,6 +515,8 @@ struct obs_service {
 	bool                            destroy;
 	struct obs_output               *output;
 };
+
+extern const struct obs_service_info *find_service(const char *id);
 
 extern void obs_service_activate(struct obs_service *service);
 extern void obs_service_deactivate(struct obs_service *service, bool remove);

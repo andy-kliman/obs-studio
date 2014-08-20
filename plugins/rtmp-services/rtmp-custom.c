@@ -16,8 +16,8 @@ static void rtmp_custom_update(void *data, obs_data_t settings)
 	bfree(service->server);
 	bfree(service->key);
 
-	service->server = bstrdup(obs_data_getstring(settings, "server"));
-	service->key    = bstrdup(obs_data_getstring(settings, "key"));
+	service->server = bstrdup(obs_data_get_string(settings, "server"));
+	service->key    = bstrdup(obs_data_get_string(settings, "key"));
 }
 
 static void rtmp_custom_destroy(void *data)
@@ -62,12 +62,12 @@ static const char *rtmp_custom_key(void *data)
 }
 
 struct obs_service_info rtmp_custom_service = {
-	.id         = "rtmp_custom",
-	.getname    = rtmp_custom_name,
-	.create     = rtmp_custom_create,
-	.destroy    = rtmp_custom_destroy,
-	.update     = rtmp_custom_update,
-	.properties = rtmp_custom_properties,
-	.get_url    = rtmp_custom_url,
-	.get_key    = rtmp_custom_key
+	.id             = "rtmp_custom",
+	.get_name       = rtmp_custom_name,
+	.create         = rtmp_custom_create,
+	.destroy        = rtmp_custom_destroy,
+	.update         = rtmp_custom_update,
+	.get_properties = rtmp_custom_properties,
+	.get_url        = rtmp_custom_url,
+	.get_key        = rtmp_custom_key
 };

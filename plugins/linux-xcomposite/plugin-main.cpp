@@ -19,7 +19,7 @@ static void xcompcap_video_tick(void* data, float seconds)
 	cc->tick(seconds);
 }
 
-static void xcompcap_video_render(void* data, effect_t effect)
+static void xcompcap_video_render(void* data, gs_effect_t effect)
 {
 	XCompcapMain* cc = (XCompcapMain*)data;
 	cc->render(effect);
@@ -61,10 +61,8 @@ static const char* xcompcap_getname(void)
 	return obs_module_text("XCCapture");
 }
 
-bool obs_module_load(uint32_t libobs_version)
+bool obs_module_load(void)
 {
-	UNUSED_PARAMETER(libobs_version);
-
 	if (!XCompcapMain::init())
 		return false;
 
@@ -74,16 +72,16 @@ bool obs_module_load(uint32_t libobs_version)
 	sinfo.id = "xcomposite_input";
 	sinfo.output_flags = OBS_SOURCE_VIDEO;
 
-	sinfo.getname      = xcompcap_getname;
-	sinfo.create       = xcompcap_create;
-	sinfo.destroy      = xcompcap_destroy;
-	sinfo.properties   = xcompcap_props;
-	sinfo.defaults     = xcompcap_defaults;
-	sinfo.update       = xcompcap_update;
-	sinfo.video_tick   = xcompcap_video_tick;
-	sinfo.video_render = xcompcap_video_render;
-	sinfo.getwidth     = xcompcap_getwidth;
-	sinfo.getheight    = xcompcap_getheight;
+	sinfo.get_name       = xcompcap_getname;
+	sinfo.create         = xcompcap_create;
+	sinfo.destroy        = xcompcap_destroy;
+	sinfo.get_properties = xcompcap_props;
+	sinfo.get_defaults   = xcompcap_defaults;
+	sinfo.update         = xcompcap_update;
+	sinfo.video_tick     = xcompcap_video_tick;
+	sinfo.video_render   = xcompcap_video_render;
+	sinfo.get_width      = xcompcap_getwidth;
+	sinfo.get_height     = xcompcap_getheight;
 
 	obs_register_source(&sinfo);
 
@@ -95,8 +93,6 @@ bool obs_module_load(uint32_t libobs_version)
 void obs_module_unload()
 {
 	XCompcapMain::deinit();
-
-	OBS_MODULE_FREE_DEFAULT_LOCALE();
 
 	blog(LOG_INFO, "Xcomposite capture plugin unloaded");
 }

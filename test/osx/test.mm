@@ -55,16 +55,15 @@ static void CreateOBS(NSView *view)
 	ovi.window_height   = cy;
 	ovi.window.view     = view;
 
-	if (!obs_reset_video(&ovi))
+	if (obs_reset_video(&ovi) != 0)
 		throw "Couldn't initialize video";
 }
 
 static SceneContext SetupScene()
 {
 	/* ------------------------------------------------------ */
-	/* load module */
-	if (obs_load_module("test-input") != 0)
-		throw "Couldn't load module";
+	/* load modules */
+	obs_load_all_modules();
 
 	/* ------------------------------------------------------ */
 	/* create source */
@@ -83,7 +82,7 @@ static SceneContext SetupScene()
 
 	/* ------------------------------------------------------ */
 	/* set the scene as the primary draw source and go */
-	obs_set_output_source(0, obs_scene_getsource(scene));
+	obs_set_output_source(0, obs_scene_get_source(scene));
 
 	return scene;
 }
@@ -166,11 +165,11 @@ static SceneContext SetupScene()
 int main()
 {
 	@autoreleasepool {
-		[NSApplication sharedApplication];
+		NSApplication *app = [NSApplication sharedApplication];
 		OBSTest *test = [[OBSTest alloc] init];
-		[NSApp setDelegate:test];
+		app.delegate = test;
 
-		[NSApp run];
+		[app run];
 	}
 
 	return 0;

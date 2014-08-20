@@ -79,8 +79,8 @@ private:
 	obs_encoder_t aac = nullptr;
 	obs_encoder_t x264 = nullptr;
 
-	vertbuffer_t  box = nullptr;
-	vertbuffer_t  circle = nullptr;
+	gs_vertbuffer_t box = nullptr;
+	gs_vertbuffer_t circle = nullptr;
 
 	bool          sceneChanging = false;
 
@@ -140,6 +140,8 @@ private:
 	void TempStreamOutput(const char *url, const char *key,
 			int vBitrate, int aBitrate);
 
+	void CreatePropertiesWindow(obs_source_t source);
+
 public slots:
 	void StreamingStart();
 	void StreamingStop(int errorcode);
@@ -154,7 +156,7 @@ private slots:
 	void UpdateSceneSelection(OBSSource source);
 	void RenameSources(QString newName, QString prevName);
 
-	void MoveSceneItem(OBSSceneItem item, order_movement movement);
+	void MoveSceneItem(OBSSceneItem item, obs_order_movement movement);
 
 	void ActivateAudioSource(OBSSource source);
 	void DeactivateAudioSource(OBSSource source);
@@ -191,7 +193,7 @@ public:
 	obs_service_t GetService();
 	void          SetService(obs_service_t service);
 
-	bool ResetVideo();
+	int  ResetVideo();
 	bool ResetAudio();
 
 	void ResetAudioDevice(const char *sourceId, const char *deviceName,

@@ -261,7 +261,11 @@ bool OBSApp::OBSInit()
 			config_save(globalConfig);
 		}
 
-		mainWindow = move(unique_ptr<OBSBasic>(new OBSBasic()));
+		mainWindow = new OBSBasic();
+
+		mainWindow->setAttribute(Qt::WA_DeleteOnClose, true);
+		connect(mainWindow, SIGNAL(destroyed()), this, SLOT(quit()));
+
 		mainWindow->OBSInit();
 
 		return true;
@@ -273,16 +277,16 @@ bool OBSApp::OBSInit()
 string OBSApp::GetVersionString() const
 {
 	stringstream ver;
-	ver << "v" <<
-		LIBOBS_API_MAJOR_VER << "." <<
+
+#ifdef HAVE_OBSCONFIG_H
+	ver << OBS_VERSION;
+#else
+	ver <<  LIBOBS_API_MAJOR_VER << "." <<
 		LIBOBS_API_MINOR_VER << "." <<
 		LIBOBS_API_PATCH_VER;
 
-	ver << " (";
-
-#ifdef HAVE_OBSCONFIG_H
-	ver << OBS_VERSION << ", ";
 #endif
+	ver << " (";
 
 #ifdef _WIN32
 	if (sizeof(void*) == 8)

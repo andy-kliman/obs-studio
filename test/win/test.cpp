@@ -88,7 +88,7 @@ static void CreateOBS(HWND hwnd)
 	ovi.output_height   = rc.bottom;
 	ovi.window.hwnd     = hwnd;
 
-	if (!obs_reset_video(&ovi))
+	if (obs_reset_video(&ovi) != 0)
 		throw "Couldn't initialize video";
 }
 
@@ -100,7 +100,7 @@ static void AddTestItems(obs_scene_t scene, obs_source_t source)
 	vec2_set(&scale, 20.0f, 20.0f);
 
 	item = obs_scene_add(scene, source);
-	obs_sceneitem_setscale(item, &scale);
+	obs_sceneitem_set_scale(item, &scale);
 }
 
 static HWND CreateTestWindow(HINSTANCE instance)
@@ -152,9 +152,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine,
 		CreateOBS(hwnd);
 
 		/* ------------------------------------------------------ */
-		/* load module */
-		if (obs_load_module("test-input") != 0)
-			throw "Couldn't load module";
+		/* load modules */
+		obs_load_all_modules();
 
 		/* ------------------------------------------------------ */
 		/* create source */
@@ -181,7 +180,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine,
 
 		/* ------------------------------------------------------ */
 		/* set the scene as the primary draw source and go */
-		obs_set_output_source(0, obs_scene_getsource(scene));
+		obs_set_output_source(0, obs_scene_get_source(scene));
 
 		/* ------------------------------------------------------ */
 		/* set the main output render callback */

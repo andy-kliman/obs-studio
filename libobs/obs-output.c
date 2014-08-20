@@ -21,7 +21,7 @@
 
 static inline void signal_stop(struct obs_output *output, int code);
 
-static inline const struct obs_output_info *find_output(const char *id)
+const struct obs_output_info *find_output(const char *id)
 {
 	size_t i;
 	for (i = 0; i < obs->output_types.num; i++)
@@ -31,10 +31,10 @@ static inline const struct obs_output_info *find_output(const char *id)
 	return NULL;
 }
 
-const char *obs_output_getdisplayname(const char *id)
+const char *obs_output_get_display_name(const char *id)
 {
 	const struct obs_output_info *info = find_output(id);
-	return (info != NULL) ? info->getname() : NULL;
+	return (info != NULL) ? info->get_name() : NULL;
 }
 
 static const char *output_signals[] = {
@@ -76,10 +76,10 @@ obs_output_t obs_output_create(const char *id, const char *name,
 		goto fail;
 
 	output->info     = *info;
-	output->video    = obs_video();
-	output->audio    = obs_audio();
-	if (output->info.defaults)
-		output->info.defaults(output->context.settings);
+	output->video    = obs_get_video();
+	output->audio    = obs_get_audio();
+	if (output->info.get_defaults)
+		output->info.get_defaults(output->context.settings);
 
 	ret = os_event_init(&output->reconnect_stop_event,
 			OS_EVENT_TYPE_MANUAL);
@@ -146,7 +146,7 @@ void obs_output_destroy(obs_output_t output)
 	}
 }
 
-const char *obs_output_getname(obs_output_t output)
+const char *obs_output_get_name(obs_output_t output)
 {
 	return output ? output->context.name : NULL;
 }
@@ -178,8 +178,8 @@ bool obs_output_active(obs_output_t output)
 static inline obs_data_t get_defaults(const struct obs_output_info *info)
 {
 	obs_data_t settings = obs_data_create();
-	if (info->defaults)
-		info->defaults(settings);
+	if (info->get_defaults)
+		info->get_defaults(settings);
 	return settings;
 }
 
@@ -192,11 +192,11 @@ obs_data_t obs_output_defaults(const char *id)
 obs_properties_t obs_get_output_properties(const char *id)
 {
 	const struct obs_output_info *info = find_output(id);
-	if (info && info->properties) {
+	if (info && info->get_properties) {
 		obs_data_t       defaults = get_defaults(info);
 		obs_properties_t properties;
 
-		properties = info->properties();
+		properties = info->get_properties();
 		obs_properties_apply_settings(properties, defaults);
 		obs_data_release(defaults);
 		return properties;
@@ -206,9 +206,9 @@ obs_properties_t obs_get_output_properties(const char *id)
 
 obs_properties_t obs_output_properties(obs_output_t output)
 {
-	if (output && output->info.properties) {
+	if (output && output->info.get_properties) {
 		obs_properties_t props;
-		props = output->info.properties();
+		props = output->info.get_properties();
 		obs_properties_apply_settings(props, output->context.settings);
 		return props;
 	}
@@ -247,12 +247,12 @@ void obs_output_pause(obs_output_t output)
 		output->info.pause(output->context.data);
 }
 
-signal_handler_t obs_output_signalhandler(obs_output_t output)
+signal_handler_t obs_output_get_signal_handler(obs_output_t output)
 {
 	return output ? output->context.signals : NULL;
 }
 
-proc_handler_t obs_output_prochandler(obs_output_t output)
+proc_handler_t obs_output_get_proc_handler(obs_output_t output)
 {
 	return output ? output->context.procs : NULL;
 }
@@ -296,6 +296,11 @@ void obs_output_set_video_encoder(obs_output_t output, obs_encoder_t encoder)
 	obs_encoder_remove_output(encoder, output);
 	obs_encoder_add_output(encoder, output);
 	output->video_encoder = encoder;
+
+	/* set the preferred resolution on the encoder */
+	if (output->scaled_width && output->scaled_height)
+		obs_encoder_set_scaled_size(output->video_encoder,
+				output->scaled_width, output->scaled_height);
 }
 
 void obs_output_set_audio_encoder(obs_output_t output, obs_encoder_t encoder)
@@ -346,23 +351,72 @@ void obs_output_set_reconnect_settings(obs_output_t output,
 
 uint64_t obs_output_get_total_bytes(obs_output_t output)
 {
-	if (!output || !output->info.total_bytes)
+	if (!output || !output->info.get_total_bytes)
 		return 0;
 
-	return output->info.total_bytes(output->context.data);
+	return output->info.get_total_bytes(output->context.data);
 }
 
 int obs_output_get_frames_dropped(obs_output_t output)
 {
-	if (!output || !output->info.dropped_frames)
+	if (!output || !output->info.get_dropped_frames)
 		return 0;
 
-	return output->info.dropped_frames(output->context.data);
+	return output->info.get_dropped_frames(output->context.data);
 }
 
 int obs_output_get_total_frames(obs_output_t output)
 {
 	return output ? output->total_frames : 0;
+}
+
+void obs_output_set_preferred_size(obs_output_t output, uint32_t width,
+		uint32_t height)
+{
+	if (!output || (output->info.flags & OBS_OUTPUT_VIDEO) == 0)
+		return;
+
+	if (output->active) {
+		blog(LOG_WARNING, "output '%s': Cannot set the preferred "
+		                  "resolution while the output is active",
+		                  obs_output_get_name(output));
+		return;
+	}
+
+	output->scaled_width  = width;
+	output->scaled_height = height;
+
+	if (output->info.flags & OBS_OUTPUT_ENCODED) {
+		if (output->video_encoder)
+			obs_encoder_set_scaled_size(output->video_encoder,
+					width, height);
+	}
+}
+
+uint32_t obs_output_get_width(obs_output_t output)
+{
+	if (!output || (output->info.flags & OBS_OUTPUT_VIDEO) == 0)
+		return 0;
+
+	if (output->info.flags & OBS_OUTPUT_ENCODED)
+		return obs_encoder_get_width(output->video_encoder);
+	else
+		return output->scaled_width != 0 ?
+			output->scaled_width :
+			video_output_get_width(output->video);
+}
+
+uint32_t obs_output_get_height(obs_output_t output)
+{
+	if (!output || (output->info.flags & OBS_OUTPUT_VIDEO) == 0)
+		return 0;
+
+	if (output->info.flags & OBS_OUTPUT_ENCODED)
+		return obs_encoder_get_height(output->video_encoder);
+	else
+		return output->scaled_height != 0 ?
+			output->scaled_height :
+			video_output_get_height(output->video);
 }
 
 void obs_output_set_video_conversion(obs_output_t output,
@@ -412,10 +466,43 @@ static bool can_begin_data_capture(struct obs_output *output, bool encoded,
 	return true;
 }
 
+static inline bool has_scaling(struct obs_output *output)
+{
+	uint32_t video_width  = video_output_get_width(output->video);
+	uint32_t video_height = video_output_get_height(output->video);
+
+	return output->scaled_width && output->scaled_height &&
+		(video_width  != output->scaled_width ||
+		 video_height != output->scaled_height);
+}
+
 static inline struct video_scale_info *get_video_conversion(
 		struct obs_output *output)
 {
-	return output->video_conversion_set ? &output->video_conversion : NULL;
+	if (output->video_conversion_set) {
+		if (!output->video_conversion.width)
+			output->video_conversion.width =
+				obs_output_get_width(output);
+
+		if (!output->video_conversion.height)
+			output->video_conversion.height =
+				obs_output_get_height(output);
+
+		return &output->video_conversion;
+
+	} else if (has_scaling(output)) {
+		const struct video_output_info *info =
+			video_output_get_info(output->video);
+
+		output->video_conversion.format     = info->format;
+		output->video_conversion.colorspace = VIDEO_CS_DEFAULT;
+		output->video_conversion.range      = VIDEO_RANGE_DEFAULT;
+		output->video_conversion.width      = output->scaled_width;
+		output->video_conversion.height     = output->scaled_height;
+		return &output->video_conversion;
+	}
+
+	return NULL;
 }
 
 static inline struct audio_convert_info *get_audio_conversion(
@@ -591,7 +678,7 @@ static inline void do_output_signal(struct obs_output *output,
 		const char *signal)
 {
 	struct calldata params = {0};
-	calldata_setptr(&params, "output", output);
+	calldata_set_ptr(&params, "output", output);
 	signal_handler_signal(output->context.signals, signal, &params);
 	calldata_free(&params);
 }
@@ -614,8 +701,8 @@ static inline void signal_reconnect_success(struct obs_output *output)
 static inline void signal_stop(struct obs_output *output, int code)
 {
 	struct calldata params = {0};
-	calldata_setint(&params, "code", code);
-	calldata_setptr(&params, "output", output);
+	calldata_set_int(&params, "code", code);
+	calldata_set_ptr(&params, "output", output);
 	signal_handler_signal(output->context.signals, "stop", &params);
 	calldata_free(&params);
 }

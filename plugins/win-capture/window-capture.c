@@ -33,7 +33,7 @@ struct window_capture {
 
 	float                resize_timer;
 
-	effect_t             opaque_effect;
+	gs_effect_t          opaque_effect;
 
 	HWND                 window;
 	RECT                 last_rect;
@@ -56,8 +56,8 @@ char *decode_str(const char *src)
 
 static void update_settings(struct window_capture *wc, obs_data_t s)
 {
-	const char *window     = obs_data_getstring(s, "window");
-	int        priority    = (int)obs_data_getint(s, "priority");
+	const char *window     = obs_data_get_string(s, "window");
+	int        priority    = (int)obs_data_get_int(s, "priority");
 
 	bfree(wc->title);
 	bfree(wc->class);
@@ -79,8 +79,8 @@ static void update_settings(struct window_capture *wc, obs_data_t s)
 	}
 
 	wc->priority      = (enum window_priority)priority;
-	wc->cursor        = obs_data_getbool(s, "cursor");
-	wc->use_wildcards = obs_data_getbool(s, "use_wildcards");
+	wc->cursor        = obs_data_get_bool(s, "cursor");
+	wc->use_wildcards = obs_data_get_bool(s, "use_wildcards");
 }
 
 static bool get_exe_name(struct dstr *name, HWND window)
@@ -311,7 +311,7 @@ static const char *wc_getname(void)
 static void *wc_create(obs_data_t settings, obs_source_t source)
 {
 	struct window_capture *wc;
-	effect_t opaque_effect = create_opaque_effect();
+	gs_effect_t opaque_effect = create_opaque_effect();
 	if (!opaque_effect)
 		return NULL;
 
@@ -334,9 +334,9 @@ static void wc_destroy(void *data)
 		bfree(wc->class);
 		bfree(wc->executable);
 
-		gs_entercontext(obs_graphics());
-		effect_destroy(wc->opaque_effect);
-		gs_leavecontext();
+		obs_enter_graphics();
+		gs_effect_destroy(wc->opaque_effect);
+		obs_leave_graphics();
 
 		bfree(wc);
 	}
@@ -365,8 +365,8 @@ static uint32_t wc_height(void *data)
 
 static void wc_defaults(obs_data_t defaults)
 {
-	obs_data_setbool(defaults, "cursor", true);
-	obs_data_setbool(defaults, "compatibility", false);
+	obs_data_set_default_bool(defaults, "cursor", true);
+	obs_data_set_default_bool(defaults, "compatibility", false);
 }
 
 static obs_properties_t wc_properties(void)
@@ -413,7 +413,7 @@ static void wc_tick(void *data, float seconds)
 		return;
 	}
 
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 
 	GetClientRect(wc->window, &rect);
 
@@ -438,10 +438,10 @@ static void wc_tick(void *data, float seconds)
 	}
 
 	dc_capture_capture(&wc->capture, wc->window);
-	gs_leavecontext();
+	obs_leave_graphics();
 }
 
-static void wc_render(void *data, effect_t effect)
+static void wc_render(void *data, gs_effect_t effect)
 {
 	struct window_capture *wc = data;
 	dc_capture_render(&wc->capture, wc->opaque_effect);
@@ -450,17 +450,17 @@ static void wc_render(void *data, effect_t effect)
 }
 
 struct obs_source_info window_capture_info = {
-	.id           = "window_capture",
-	.type         = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW,
-	.getname      = wc_getname,
-	.create       = wc_create,
-	.destroy      = wc_destroy,
-	.update       = wc_update,
-	.getwidth     = wc_width,
-	.getheight    = wc_height,
-	.defaults     = wc_defaults,
-	.properties   = wc_properties,
-	.video_render = wc_render,
-	.video_tick   = wc_tick
+	.id             = "window_capture",
+	.type           = OBS_SOURCE_TYPE_INPUT,
+	.output_flags   = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW,
+	.get_name       = wc_getname,
+	.create         = wc_create,
+	.destroy        = wc_destroy,
+	.update         = wc_update,
+	.video_render   = wc_render,
+	.video_tick     = wc_tick,
+	.get_width      = wc_width,
+	.get_height     = wc_height,
+	.get_defaults   = wc_defaults,
+	.get_properties = wc_properties
 };

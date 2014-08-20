@@ -2,38 +2,38 @@
 
 #define warn(format, ...) \
 	blog(LOG_WARNING, "[image_source: '%s'] " format, \
-			obs_source_getname(context->source), ##__VA_ARGS__)
+			obs_source_get_name(context->source), ##__VA_ARGS__)
 
 struct image_source {
 	obs_source_t source;
 
-	texture_t    tex;
+	gs_texture_t tex;
 	uint32_t     cx;
 	uint32_t     cy;
 };
 
 static const char *image_source_get_name(void)
 {
-	return obs_module_text("Image");
+	return obs_module_text("ImageInput");
 }
 
 static void image_source_update(void *data, obs_data_t settings)
 {
 	struct image_source *context = data;
-	const char *file = obs_data_getstring(settings, "file");
+	const char *file = obs_data_get_string(settings, "file");
 
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 
 	if (context->tex) {
-		texture_destroy(context->tex);
+		gs_texture_destroy(context->tex);
 		context->tex = NULL;
 	}
 
-	if (file) {
-		context->tex = gs_create_texture_from_file(file);
+	if (file && *file) {
+		context->tex = gs_texture_create_from_file(file);
 		if (context->tex) {
-			context->cx = texture_getwidth(context->tex);
-			context->cy = texture_getheight(context->tex);
+			context->cx = gs_texture_get_width(context->tex);
+			context->cy = gs_texture_get_height(context->tex);
 		} else {
 			warn("failed to load texture '%s'", file);
 			context->cx = 0;
@@ -41,7 +41,7 @@ static void image_source_update(void *data, obs_data_t settings)
 		}
 	}
 
-	gs_leavecontext();
+	obs_leave_graphics();
 }
 
 static void *image_source_create(obs_data_t settings, obs_source_t source)
@@ -57,9 +57,9 @@ static void image_source_destroy(void *data)
 {
 	struct image_source *context = data;
 
-	gs_entercontext(obs_graphics());
-	texture_destroy(context->tex);
-	gs_leavecontext();
+	obs_enter_graphics();
+	gs_texture_destroy(context->tex);
+	obs_leave_graphics();
 
 	bfree(context);
 }
@@ -76,13 +76,15 @@ static uint32_t image_source_getheight(void *data)
 	return context->cy;
 }
 
-static void image_source_render(void *data, effect_t effect)
+static void image_source_render(void *data, gs_effect_t effect)
 {
 	struct image_source *context = data;
 	if (!context->tex)
 		return;
 
-	effect_settexture(effect_getparambyname(effect, "image"), context->tex);
+	gs_reset_blend_state();
+	gs_effect_set_texture(gs_effect_get_param_by_name(effect, "image"),
+			context->tex);
 	gs_draw_sprite(context->tex, 0, context->cx, context->cy);
 }
 
@@ -106,31 +108,24 @@ static obs_properties_t image_source_properties(void)
 }
 
 static struct obs_source_info image_source_info = {
-	.id           = "image_source",
-	.type         = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_VIDEO,
-	.getname      = image_source_get_name,
-	.create       = image_source_create,
-	.destroy      = image_source_destroy,
-	.update       = image_source_update,
-	.getwidth     = image_source_getwidth,
-	.getheight    = image_source_getheight,
-	.video_render = image_source_render,
-	.properties   = image_source_properties
+	.id             = "image_source",
+	.type           = OBS_SOURCE_TYPE_INPUT,
+	.output_flags   = OBS_SOURCE_VIDEO,
+	.get_name       = image_source_get_name,
+	.create         = image_source_create,
+	.destroy        = image_source_destroy,
+	.update         = image_source_update,
+	.get_width      = image_source_getwidth,
+	.get_height     = image_source_getheight,
+	.video_render   = image_source_render,
+	.get_properties = image_source_properties
 };
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("image-source", "en-US")
 
-bool obs_module_load(uint32_t libobs_version)
+bool obs_module_load(void)
 {
 	obs_register_source(&image_source_info);
-
-	UNUSED_PARAMETER(libobs_version);
 	return true;
-}
-
-void obs_module_unload(void)
-{
-	OBS_MODULE_FREE_DEFAULT_LOCALE();
 }

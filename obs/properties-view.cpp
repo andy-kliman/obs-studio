@@ -1,6 +1,8 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QCheckBox>
+#include <QFont>
+#include <QFontDialog>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
@@ -8,12 +10,35 @@
 #include <QPushButton>
 #include <QStandardItem>
 #include <QFileDialog>
+#include <QColorDialog>
+#include <QPlainTextEdit>
 #include "qt-wrappers.hpp"
 #include "properties-view.hpp"
 #include "obs-app.hpp"
 #include <string>
 
 using namespace std;
+
+static inline QColor color_from_int(long long val)
+{
+	return QColor( val        & 0xff,
+		      (val >>  8) & 0xff,
+		      (val >> 16) & 0xff,
+		      (val >> 24) & 0xff);
+}
+
+static inline long long color_to_int(QColor color)
+{
+	auto shift = [&](unsigned val, int shift)
+	{
+		return ((val & 0xff) << shift);
+	};
+
+	return  shift(color.red(),    0) |
+		shift(color.green(),  8) |
+		shift(color.blue(),  16) |
+		shift(color.alpha(), 24);
+}
 
 void OBSPropertiesView::RefreshProperties()
 {
@@ -80,7 +105,7 @@ QWidget *OBSPropertiesView::AddCheckbox(obs_property_t prop)
 {
 	const char *name = obs_property_name(prop);
 	const char *desc = obs_property_description(prop);
-	bool       val   = obs_data_getbool(settings, name);
+	bool       val   = obs_data_get_bool(settings, name);
 
 	QCheckBox *checkbox = new QCheckBox(QT_UTF8(desc));
 	checkbox->setCheckState(val ? Qt::Checked : Qt::Unchecked);
@@ -90,9 +115,15 @@ QWidget *OBSPropertiesView::AddCheckbox(obs_property_t prop)
 QWidget *OBSPropertiesView::AddText(obs_property_t prop)
 {
 	const char    *name = obs_property_name(prop);
-	const char    *val  = obs_data_getstring(settings, name);
-	obs_text_type type  = obs_proprety_text_type(prop);  
-	QLineEdit     *edit = new QLineEdit();
+	const char    *val  = obs_data_get_string(settings, name);
+	obs_text_type type  = obs_proprety_text_type(prop);
+
+	if (type == OBS_TEXT_MULTILINE) {
+		QPlainTextEdit *edit = new QPlainTextEdit(QT_UTF8(val));
+		return NewWidget(prop, edit, SIGNAL(textChanged()));
+	}
+
+	QLineEdit *edit = new QLineEdit();
 
 	if (type == OBS_TEXT_PASSWORD)
 		edit->setEchoMode(QLineEdit::Password);
@@ -106,7 +137,7 @@ void OBSPropertiesView::AddPath(obs_property_t prop, QFormLayout *layout,
 		QLabel **label)
 {
 	const char  *name      = obs_property_name(prop);
-	const char  *val       = obs_data_getstring(settings, name);
+	const char  *val       = obs_data_get_string(settings, name);
 	QLayout     *subLayout = new QHBoxLayout();
 	QLineEdit   *edit      = new QLineEdit();
 	QPushButton *button    = new QPushButton(QTStr("Browse"));
@@ -128,7 +159,7 @@ void OBSPropertiesView::AddPath(obs_property_t prop, QFormLayout *layout,
 QWidget *OBSPropertiesView::AddInt(obs_property_t prop)
 {
 	const char *name = obs_property_name(prop);
-	int        val   = (int)obs_data_getint(settings, name);
+	int        val   = (int)obs_data_get_int(settings, name);
 	QSpinBox   *spin = new QSpinBox();
 
 	spin->setMinimum(obs_property_int_min(prop));
@@ -142,7 +173,7 @@ QWidget *OBSPropertiesView::AddInt(obs_property_t prop)
 QWidget *OBSPropertiesView::AddFloat(obs_property_t prop)
 {
 	const char     *name = obs_property_name(prop);
-	double         val   = obs_data_getdouble(settings, name);
+	double         val   = obs_data_get_double(settings, name);
 	QDoubleSpinBox *spin = new QDoubleSpinBox();
 
 	spin->setMinimum(obs_property_float_min(prop));
@@ -210,8 +241,8 @@ static string from_obs_data(obs_data_t data, const char *name,
 static string from_obs_data(obs_data_t data, const char *name,
 		obs_combo_format format)
 {
-	return from_obs_data<obs_data_getint, obs_data_getdouble,
-	       obs_data_getstring>(data, name, format);
+	return from_obs_data<obs_data_get_int, obs_data_get_double,
+	       obs_data_get_string>(data, name, format);
 }
 
 static string from_obs_data_autoselect(obs_data_t data, const char *name,
@@ -252,7 +283,7 @@ QWidget *OBSPropertiesView::AddList(obs_property_t prop, bool &warning)
 	if (idx != -1)
 		combo->setCurrentIndex(idx);
 	
-	if (obs_data_has_autoselect(settings, name)) {
+	if (obs_data_has_autoselect_value(settings, name)) {
 		string autoselect =
 			from_obs_data_autoselect(settings, name, format);
 		int id = combo->findData(QT_UTF8(autoselect.c_str()));
@@ -293,6 +324,95 @@ QWidget *OBSPropertiesView::AddButton(obs_property_t prop)
 	return NewWidget(prop, button, SIGNAL(clicked()));
 }
 
+void OBSPropertiesView::AddColor(obs_property_t prop, QFormLayout *layout,
+		QLabel *&label)
+{
+	QPushButton *button     = new QPushButton;
+	QLabel      *colorLabel = new QLabel;
+	const char  *name       = obs_property_name(prop);
+	long long   val         = obs_data_get_int(settings, name);
+	QColor      color       = color_from_int(val);
+
+	button->setText(QTStr("Basic.PropertiesWindow.SelectColor"));
+
+	colorLabel->setFrameStyle(QFrame::Sunken | QFrame::Panel);
+	colorLabel->setText(color.name(QColor::HexArgb));
+	colorLabel->setPalette(QPalette(color));
+	colorLabel->setAutoFillBackground(true);
+	colorLabel->setAlignment(Qt::AlignCenter);
+
+	QHBoxLayout *subLayout = new QHBoxLayout;
+	subLayout->setContentsMargins(0, 0, 0, 0);
+
+	subLayout->addWidget(colorLabel);
+	subLayout->addWidget(button);
+
+	WidgetInfo *info = new WidgetInfo(this, prop, colorLabel);
+	connect(button, SIGNAL(clicked()), info, SLOT(ControlChanged()));
+	children.emplace_back(info);
+
+	label = new QLabel(QT_UTF8(obs_property_description(prop)));
+	layout->addRow(label, subLayout);
+}
+
+static void MakeQFont(obs_data_t font_obj, QFont &font)
+{
+	const char *face  = obs_data_get_string(font_obj, "face");
+	const char *style = obs_data_get_string(font_obj, "style");
+	int        size   = (int)obs_data_get_int(font_obj, "size");
+	uint32_t   flags  = (uint32_t)obs_data_get_int(font_obj, "flags");
+
+	if (face) {
+		font.setFamily(face);
+		font.setStyleName(style);
+	}
+
+	if (size)
+		font.setPointSize(size);
+
+	if (flags & OBS_FONT_BOLD) font.setBold(true);
+	if (flags & OBS_FONT_ITALIC) font.setItalic(true);
+	if (flags & OBS_FONT_UNDERLINE) font.setUnderline(true);
+	if (flags & OBS_FONT_STRIKEOUT) font.setStrikeOut(true);
+}
+
+void OBSPropertiesView::AddFont(obs_property_t prop, QFormLayout *layout,
+		QLabel *&label)
+{
+	const char  *name      = obs_property_name(prop);
+	obs_data_t  font_obj   = obs_data_get_obj(settings, name);
+	const char  *face      = obs_data_get_string(font_obj, "face");
+	const char  *style     = obs_data_get_string(font_obj, "style");
+	QPushButton *button    = new QPushButton;
+	QLabel      *fontLabel = new QLabel;
+	QFont       font;
+
+	font = fontLabel->font();
+	MakeQFont(font_obj, font);
+
+	button->setText(QTStr("Basic.PropertiesWindow.SelectFont"));
+
+	fontLabel->setFrameStyle(QFrame::Sunken | QFrame::Panel);
+	fontLabel->setFont(font);
+	fontLabel->setText(QString("%1 %2").arg(face, style));
+	fontLabel->setAlignment(Qt::AlignCenter);
+
+	QHBoxLayout *subLayout = new QHBoxLayout;
+	subLayout->setContentsMargins(0, 0, 0, 0);
+
+	subLayout->addWidget(fontLabel);
+	subLayout->addWidget(button);
+
+	WidgetInfo *info = new WidgetInfo(this, prop, fontLabel);
+	connect(button, SIGNAL(clicked()), info, SLOT(ControlChanged()));
+	children.emplace_back(info);
+
+	label = new QLabel(QT_UTF8(obs_property_description(prop)));
+	layout->addRow(label, subLayout);
+
+	obs_data_release(font_obj);
+}
+
 void OBSPropertiesView::AddProperty(obs_property_t property,
 		QFormLayout *layout)
 {
@@ -328,7 +448,10 @@ void OBSPropertiesView::AddProperty(obs_property_t property,
 		widget = AddList(property, warning);
 		break;
 	case OBS_PROPERTY_COLOR:
-		/* TODO */
+		AddColor(property, layout, label);
+		break;
+	case OBS_PROPERTY_FONT:
+		AddFont(property, layout, label);
 		break;
 	case OBS_PROPERTY_BUTTON:
 		widget = AddButton(property);
@@ -364,26 +487,35 @@ void OBSPropertiesView::AddProperty(obs_property_t property,
 void WidgetInfo::BoolChanged(const char *setting)
 {
 	QCheckBox *checkbox = static_cast<QCheckBox*>(widget);
-	obs_data_setbool(view->settings, setting,
+	obs_data_set_bool(view->settings, setting,
 			checkbox->checkState() == Qt::Checked);
 }
 
 void WidgetInfo::IntChanged(const char *setting)
 {
 	QSpinBox *spin = static_cast<QSpinBox*>(widget);
-	obs_data_setint(view->settings, setting, spin->value());
+	obs_data_set_int(view->settings, setting, spin->value());
 }
 
 void WidgetInfo::FloatChanged(const char *setting)
 {
 	QDoubleSpinBox *spin = static_cast<QDoubleSpinBox*>(widget);
-	obs_data_setdouble(view->settings, setting, spin->value());
+	obs_data_set_double(view->settings, setting, spin->value());
 }
 
 void WidgetInfo::TextChanged(const char *setting)
 {
+	obs_text_type type  = obs_proprety_text_type(property);
+
+	if (type == OBS_TEXT_MULTILINE) {
+		QPlainTextEdit *edit = static_cast<QPlainTextEdit*>(widget);
+		obs_data_set_string(view->settings, setting,
+				QT_TO_UTF8(edit->toPlainText()));
+		return;
+	}
+
 	QLineEdit *edit = static_cast<QLineEdit*>(widget);
-	obs_data_setstring(view->settings, setting, QT_TO_UTF8(edit->text()));
+	obs_data_set_string(view->settings, setting, QT_TO_UTF8(edit->text()));
 }
 
 bool WidgetInfo::PathChanged(const char *setting)
@@ -409,7 +541,7 @@ bool WidgetInfo::PathChanged(const char *setting)
 
 	QLineEdit *edit = static_cast<QLineEdit*>(widget);
 	edit->setText(path);
-	obs_data_setstring(view->settings, setting, QT_TO_UTF8(path));
+	obs_data_set_string(view->settings, setting, QT_TO_UTF8(path));
 	return true;
 }
 
@@ -434,24 +566,90 @@ void WidgetInfo::ListChanged(const char *setting)
 	case OBS_COMBO_FORMAT_INVALID:
 		return;
 	case OBS_COMBO_FORMAT_INT:
-		obs_data_setint(view->settings, setting,
+		obs_data_set_int(view->settings, setting,
 				data.value<long long>());
 		break;
 	case OBS_COMBO_FORMAT_FLOAT:
-		obs_data_setdouble(view->settings, setting,
+		obs_data_set_double(view->settings, setting,
 				data.value<double>());
 		break;
 	case OBS_COMBO_FORMAT_STRING:
-		obs_data_setstring(view->settings, setting,
+		obs_data_set_string(view->settings, setting,
 				QT_TO_UTF8(data.toString()));
 		break;
 	}
 }
 
-void WidgetInfo::ColorChanged(const char *setting)
+bool WidgetInfo::ColorChanged(const char *setting)
 {
-	/* TODO */
-	UNUSED_PARAMETER(setting);
+	const char *desc = obs_property_description(property);
+	long long  val   = obs_data_get_int(view->settings, setting);
+	QColor     color = color_from_int(val);
+
+	QColorDialog::ColorDialogOptions options =
+		QColorDialog::ShowAlphaChannel;
+
+	/* The native dialog on OSX has all kinds of problems, like closing
+	 * other open QDialogs on exit, and
+	 * https://bugreports.qt-project.org/browse/QTBUG-34532
+	 */
+#ifdef __APPLE__
+	options |= QColorDialog::DontUseNativeDialog;
+#endif
+
+	color = QColorDialog::getColor(color, view, QT_UTF8(desc), options);
+
+	if (!color.isValid())
+		return false;
+
+	QLabel *label = static_cast<QLabel*>(widget);
+	label->setText(color.name(QColor::HexArgb));
+	label->setPalette(QPalette(color));
+
+	obs_data_set_int(view->settings, setting, color_to_int(color));
+
+	return true;
+}
+
+bool WidgetInfo::FontChanged(const char *setting)
+{
+	obs_data_t font_obj = obs_data_get_obj(view->settings, setting);
+	bool       success;
+	uint32_t   flags;
+	QFont      font;
+
+	if (!font_obj) {
+		font = QFontDialog::getFont(&success, view);
+	} else {
+		MakeQFont(font_obj, font);
+		font = QFontDialog::getFont(&success, font, view);
+	}
+
+	if (!success) {
+		obs_data_release(font_obj);
+		return false;
+	}
+
+	if (!font_obj) {
+		font_obj = obs_data_create();
+		obs_data_set_obj(view->settings, setting, font_obj);
+	}
+
+	obs_data_set_string(font_obj, "face", QT_TO_UTF8(font.family()));
+	obs_data_set_string(font_obj, "style", QT_TO_UTF8(font.styleName()));
+	obs_data_set_int(font_obj, "size", font.pointSize());
+	flags  = font.bold() ? OBS_FONT_BOLD : 0;
+	flags |= font.italic() ? OBS_FONT_ITALIC : 0;
+	flags |= font.underline() ? OBS_FONT_UNDERLINE : 0;
+	flags |= font.strikeOut() ? OBS_FONT_STRIKEOUT : 0;
+	obs_data_set_int(font_obj, "flags", flags);
+
+	QLabel *label = static_cast<QLabel*>(widget);
+	label->setFont(font);
+	label->setText(QString("%1 %2").arg(font.family(), font.styleName()));
+
+	obs_data_release(font_obj);
+	return true;
 }
 
 void WidgetInfo::ButtonClicked()
@@ -471,8 +669,15 @@ void WidgetInfo::ControlChanged()
 	case OBS_PROPERTY_FLOAT:   FloatChanged(setting); break;
 	case OBS_PROPERTY_TEXT:    TextChanged(setting); break;
 	case OBS_PROPERTY_LIST:    ListChanged(setting); break;
-	case OBS_PROPERTY_COLOR:   ColorChanged(setting); break;
 	case OBS_PROPERTY_BUTTON:  ButtonClicked(); return;
+	case OBS_PROPERTY_COLOR:
+		if (!ColorChanged(setting))
+			return;
+		break;
+	case OBS_PROPERTY_FONT:
+		if (!FontChanged(setting))
+			return;
+		break;
 	case OBS_PROPERTY_PATH:
 		if (!PathChanged(setting))
 			return;

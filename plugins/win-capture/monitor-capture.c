@@ -10,7 +10,7 @@ struct monitor_capture {
 
 	struct dc_capture data;
 
-	effect_t          opaque_effect;
+	gs_effect_t       opaque_effect;
 };
 
 struct monitor_info {
@@ -58,7 +58,7 @@ static void update_monitor(struct monitor_capture *capture,
 	struct monitor_info monitor = {0};
 	uint32_t width, height;
 
-	monitor.desired_id = (int)obs_data_getint(settings, "monitor");
+	monitor.desired_id = (int)obs_data_get_int(settings, "monitor");
 	EnumDisplayMonitors(NULL, NULL, enum_monitor, (LPARAM)&monitor);
 
 	capture->monitor = monitor.id;
@@ -74,8 +74,8 @@ static void update_monitor(struct monitor_capture *capture,
 static inline void update_settings(struct monitor_capture *capture,
 		obs_data_t settings)
 {
-	capture->capture_cursor = obs_data_getbool(settings, "capture_cursor");
-	capture->compatibility  = obs_data_getbool(settings, "compatibility");
+	capture->capture_cursor = obs_data_get_bool(settings, "capture_cursor");
+	capture->compatibility  = obs_data_get_bool(settings, "compatibility");
 
 	dc_capture_free(&capture->data);
 	update_monitor(capture, settings);
@@ -92,12 +92,12 @@ static void monitor_capture_destroy(void *data)
 {
 	struct monitor_capture *capture = data;
 
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 
 	dc_capture_free(&capture->data);
-	effect_destroy(capture->opaque_effect);
+	gs_effect_destroy(capture->opaque_effect);
 
-	gs_leavecontext();
+	obs_leave_graphics();
 
 	bfree(capture);
 }
@@ -112,7 +112,7 @@ static void monitor_capture_defaults(obs_data_t settings)
 static void *monitor_capture_create(obs_data_t settings, obs_source_t source)
 {
 	struct monitor_capture *capture;
-	effect_t opaque_effect = create_opaque_effect();
+	gs_effect_t opaque_effect = create_opaque_effect();
 
 	if (!opaque_effect)
 		return NULL;
@@ -130,14 +130,14 @@ static void monitor_capture_tick(void *data, float seconds)
 {
 	struct monitor_capture *capture = data;
 
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 	dc_capture_capture(&capture->data, NULL);
-	gs_leavecontext();
+	obs_leave_graphics();
 
 	UNUSED_PARAMETER(seconds);
 }
 
-static void monitor_capture_render(void *data, effect_t effect)
+static void monitor_capture_render(void *data, gs_effect_t effect)
 {
 	struct monitor_capture *capture = data;
 	dc_capture_render(&capture->data, capture->opaque_effect);
@@ -161,12 +161,12 @@ struct obs_source_info monitor_capture_info = {
 	.id           = "monitor_capture",
 	.type         = OBS_SOURCE_TYPE_INPUT,
 	.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW,
-	.getname      = monitor_capture_getname,
+	.get_name     = monitor_capture_getname,
 	.create       = monitor_capture_create,
 	.destroy      = monitor_capture_destroy,
-	.getwidth     = monitor_capture_width,
-	.getheight    = monitor_capture_height,
-	.defaults     = monitor_capture_defaults,
 	.video_render = monitor_capture_render,
-	.video_tick   = monitor_capture_tick
+	.video_tick   = monitor_capture_tick,
+	.get_width    = monitor_capture_width,
+	.get_height   = monitor_capture_height,
+	.get_defaults = monitor_capture_defaults
 };

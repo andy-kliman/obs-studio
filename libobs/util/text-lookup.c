@@ -70,7 +70,8 @@ static struct text_node *text_node_bychar(struct text_node *node, char ch)
 	struct text_node *subnode = node->first_subnode;
 
 	while (subnode) {
-		if (!dstr_isempty(&subnode->str) && subnode->str.array[0] == ch)
+		if (!dstr_is_empty(&subnode->str) &&
+		    subnode->str.array[0] == ch)
 			return subnode;
 
 		subnode = subnode->next;
@@ -409,5 +410,7 @@ void text_lookup_destroy(lookup_t lookup)
 bool text_lookup_getstr(lookup_t lookup, const char *lookup_val,
 		const char **out)
 {
-	return lookup_getstring(lookup_val, out, lookup->top);
+	if (lookup)
+		return lookup_getstring(lookup_val, out, lookup->top);
+	return false;
 }

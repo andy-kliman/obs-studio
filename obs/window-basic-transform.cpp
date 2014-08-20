@@ -37,8 +37,6 @@ OBSBasicTransform::OBSBasicTransform(OBSBasic *parent)
 	  ui      (new Ui::OBSBasicTransform),
 	  main    (parent)
 {
-	setAttribute(Qt::WA_DeleteOnClose);
-
 	ui->setupUi(this);
 
 	HookWidget(ui->positionX,    DSCROLL_CHANGED, SLOT(OnControlChanged()));
@@ -56,7 +54,7 @@ OBSBasicTransform::OBSBasicTransform(OBSBasic *parent)
 	SetScene(curScene);
 	SetItem(FindASelectedItem(curScene));
 
-	channelChangedSignal.Connect(obs_signalhandler(), "channel_change",
+	channelChangedSignal.Connect(obs_get_signal_handler(), "channel_change",
 			OBSChannelChanged, this);
 }
 
@@ -68,8 +66,8 @@ void OBSBasicTransform::SetScene(OBSScene scene)
 	removeSignal.Disconnect();
 
 	if (scene) {
-		OBSSource source = obs_scene_getsource(scene);
-		signal_handler_t signal = obs_source_signalhandler(source);
+		OBSSource source = obs_scene_get_source(scene);
+		signal_handler_t signal = obs_source_get_signal_handler(source);
 
 		transformSignal.Connect(signal, "item_transform",
 				OBSSceneItemTransform, this);
@@ -104,7 +102,7 @@ void OBSBasicTransform::OBSChannelChanged(void *param, calldata_t data)
 	OBSSource source = (obs_source_t)calldata_ptr(data, "source");
 
 	if (channel == 0) {
-		OBSScene scene = obs_scene_fromsource(source);
+		OBSScene scene = obs_scene_from_source(source);
 		window->SetScene(scene);
 
 		if (!scene)
@@ -182,12 +180,12 @@ void OBSBasicTransform::RefreshControls()
 	if (!item)
 		return;
 
-	obs_sceneitem_info osi;
+	obs_transform_info osi;
 	obs_sceneitem_get_info(item, &osi);
 
-	obs_source_t source = obs_sceneitem_getsource(item);
-	float width  = float(obs_source_getwidth(source));
-	float height = float(obs_source_getheight(source));
+	obs_source_t source = obs_sceneitem_get_source(item);
+	float width  = float(obs_source_get_width(source));
+	float height = float(obs_source_get_height(source));
 
 	int alignIndex       = AlignToList(osi.alignment);
 	int boundsAlignIndex = AlignToList(osi.bounds_alignment);
@@ -222,9 +220,9 @@ void OBSBasicTransform::OnBoundsType(int index)
 	if (!ignoreItemChange) {
 		obs_bounds_type lastType = obs_sceneitem_get_bounds_type(item);
 		if (lastType == OBS_BOUNDS_NONE) {
-			OBSSource source = obs_sceneitem_getsource(item);
-			int width  = (int)obs_source_getwidth(source);
-			int height = (int)obs_source_getheight(source);
+			OBSSource source = obs_sceneitem_get_source(item);
+			int width  = (int)obs_source_get_width(source);
+			int height = (int)obs_source_get_height(source);
 
 			ui->boundsWidth->setValue(width);
 			ui->boundsHeight->setValue(height);
@@ -239,24 +237,24 @@ void OBSBasicTransform::OnControlChanged()
 	if (ignoreItemChange)
 		return;
 
-	obs_source_t source = obs_sceneitem_getsource(item);
-	double width  = double(obs_source_getwidth(source));
-	double height = double(obs_source_getheight(source));
+	obs_source_t source = obs_sceneitem_get_source(item);
+	double width  = double(obs_source_get_width(source));
+	double height = double(obs_source_get_height(source));
 
-	obs_sceneitem_info osi;
-	osi.pos.x            = float(ui->positionX->value());
-	osi.pos.y            = float(ui->positionY->value());
-	osi.rot              = float(ui->rotation->value());
-	osi.scale.x          = float(ui->sizeX->value() / width);
-	osi.scale.y          = float(ui->sizeY->value() / height);
-	osi.alignment        = listToAlign[ui->align->currentIndex()];
+	obs_transform_info oti;
+	oti.pos.x            = float(ui->positionX->value());
+	oti.pos.y            = float(ui->positionY->value());
+	oti.rot              = float(ui->rotation->value());
+	oti.scale.x          = float(ui->sizeX->value() / width);
+	oti.scale.y          = float(ui->sizeY->value() / height);
+	oti.alignment        = listToAlign[ui->align->currentIndex()];
 
-	osi.bounds_type      = (obs_bounds_type)ui->boundsType->currentIndex();
-	osi.bounds_alignment = listToAlign[ui->boundsAlign->currentIndex()];
-	osi.bounds.x         = float(ui->boundsWidth->value());
-	osi.bounds.y         = float(ui->boundsHeight->value());
+	oti.bounds_type      = (obs_bounds_type)ui->boundsType->currentIndex();
+	oti.bounds_alignment = listToAlign[ui->boundsAlign->currentIndex()];
+	oti.bounds.x         = float(ui->boundsWidth->value());
+	oti.bounds.y         = float(ui->boundsHeight->value());
 
 	ignoreTransformSignal = true;
-	obs_sceneitem_set_info(item, &osi);
+	obs_sceneitem_set_info(item, &oti);
 	ignoreTransformSignal = false;
 }

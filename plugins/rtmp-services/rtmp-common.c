@@ -21,9 +21,9 @@ static void rtmp_common_update(void *data, obs_data_t settings)
 	bfree(service->server);
 	bfree(service->key);
 
-	service->service = bstrdup(obs_data_getstring(settings, "service"));
-	service->server  = bstrdup(obs_data_getstring(settings, "server"));
-	service->key     = bstrdup(obs_data_getstring(settings, "key"));
+	service->service = bstrdup(obs_data_get_string(settings, "service"));
+	service->server  = bstrdup(obs_data_get_string(settings, "server"));
+	service->key     = bstrdup(obs_data_get_string(settings, "key"));
 }
 
 static void rtmp_common_destroy(void *data)
@@ -180,7 +180,7 @@ static inline json_t *find_service(json_t *root, const char *name)
 static bool service_selected(obs_properties_t props, obs_property_t p,
 		obs_data_t settings)
 {
-	const char *name = obs_data_getstring(settings, "service");
+	const char *name = obs_data_get_string(settings, "service");
 	json_t *root     = obs_properties_get_param(props);
 	json_t *service;
 
@@ -207,7 +207,7 @@ static obs_properties_t rtmp_common_properties(void)
 			obs_module_text("Service"),
 			OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 
-	file = obs_find_plugin_file("rtmp-services/services.json");
+	file = obs_module_file("services.json");
 	if (file) {
 		json_t *root = build_service_list(list, file);
 		obs_properties_set_param(ppts, root, properties_data_destroy);
@@ -231,27 +231,27 @@ static void apply_video_encoder_settings(obs_encoder_t encoder,
 	json_t *item = json_object_get(recommended, "keyint");
 	if (item && json_is_integer(item)) {
 		int keyint = (int)json_integer_value(item);
-		obs_data_setint(settings, "keyint_sec", keyint);
+		obs_data_set_int(settings, "keyint_sec", keyint);
 	}
 
 	item = json_object_get(recommended, "cbr");
 	if (item && json_is_boolean(item)) {
 		bool cbr = json_is_true(item);
-		obs_data_setbool(settings, "cbr", cbr);
+		obs_data_set_bool(settings, "cbr", cbr);
 	}
 
 	item = json_object_get(recommended, "profile");
 	if (item && json_is_string(item)) {
 		const char *profile = json_string_value(item);
-		obs_data_setbool(settings, "profile", profile);
+		obs_data_set_bool(settings, "profile", profile);
 	}
 
 	item = json_object_get(recommended, "max video bitrate");
 	if (item && json_is_integer(item)) {
 		int max_bitrate = (int)json_integer_value(item);
-		if (obs_data_getint(settings, "bitrate") > max_bitrate) {
-			obs_data_setint(settings, "bitrate", max_bitrate);
-			obs_data_setint(settings, "buffer_size", max_bitrate);
+		if (obs_data_get_int(settings, "bitrate") > max_bitrate) {
+			obs_data_set_int(settings, "bitrate", max_bitrate);
+			obs_data_set_int(settings, "buffer_size", max_bitrate);
 		}
 	}
 
@@ -267,8 +267,8 @@ static void apply_audio_encoder_settings(obs_encoder_t encoder,
 	json_t *item = json_object_get(recommended, "max audio bitrate");
 	if (item && json_is_integer(item)) {
 		int max_bitrate = (int)json_integer_value(item);
-		if (obs_data_getint(settings, "bitrate") > max_bitrate)
-			obs_data_setint(settings, "bitrate", max_bitrate);
+		if (obs_data_get_int(settings, "bitrate") > max_bitrate)
+			obs_data_set_int(settings, "bitrate", max_bitrate);
 	}
 
 	obs_encoder_update(encoder, settings);
@@ -305,7 +305,7 @@ static bool rtmp_common_initialize(void *data, obs_output_t output)
 	struct rtmp_common *service = data;
 	char               *file;
 
-	file = obs_find_plugin_file("rtmp-services/services.json");
+	file = obs_module_file("services.json");
 	if (file) {
 		json_t *root = open_json_file(file);
 		if (root) {
@@ -331,13 +331,13 @@ static const char *rtmp_common_key(void *data)
 }
 
 struct obs_service_info rtmp_common_service = {
-	.id         = "rtmp_common",
-	.getname    = rtmp_common_getname,
-	.create     = rtmp_common_create,
-	.destroy    = rtmp_common_destroy,
-	.update     = rtmp_common_update,
-	.properties = rtmp_common_properties,
-	.initialize = rtmp_common_initialize,
-	.get_url    = rtmp_common_url,
-	.get_key    = rtmp_common_key
+	.id             = "rtmp_common",
+	.get_name       = rtmp_common_getname,
+	.create         = rtmp_common_create,
+	.destroy        = rtmp_common_destroy,
+	.update         = rtmp_common_update,
+	.initialize     = rtmp_common_initialize,
+	.get_properties = rtmp_common_properties,
+	.get_url        = rtmp_common_url,
+	.get_key        = rtmp_common_key
 };

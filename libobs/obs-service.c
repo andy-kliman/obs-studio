@@ -17,7 +17,7 @@
 
 #include "obs-internal.h"
 
-static inline const struct obs_service_info *find_service(const char *id)
+const struct obs_service_info *find_service(const char *id)
 {
 	size_t i;
 	for (i = 0; i < obs->service_types.num; i++)
@@ -27,10 +27,10 @@ static inline const struct obs_service_info *find_service(const char *id)
 	return NULL;
 }
 
-const char *obs_service_getdisplayname(const char *id)
+const char *obs_service_get_display_name(const char *id)
 {
 	const struct obs_service_info *info = find_service(id);
-	return (info != NULL) ? info->getname() : NULL;
+	return (info != NULL) ? info->get_name() : NULL;
 }
 
 obs_service_t obs_service_create(const char *id, const char *name,
@@ -96,7 +96,7 @@ void obs_service_destroy(obs_service_t service)
 	}
 }
 
-const char *obs_service_getname(obs_service_t service)
+const char *obs_service_get_name(obs_service_t service)
 {
 	return service ? service->context.name : NULL;
 }
@@ -104,8 +104,8 @@ const char *obs_service_getname(obs_service_t service)
 static inline obs_data_t get_defaults(const struct obs_service_info *info)
 {
 	obs_data_t settings = obs_data_create();
-	if (info->defaults)
-		info->defaults(settings);
+	if (info->get_defaults)
+		info->get_defaults(settings);
 	return settings;
 }
 
@@ -118,11 +118,11 @@ obs_data_t obs_service_defaults(const char *id)
 obs_properties_t obs_get_service_properties(const char *id)
 {
 	const struct obs_service_info *info = find_service(id);
-	if (info && info->properties) {
+	if (info && info->get_properties) {
 		obs_data_t       defaults = get_defaults(info);
 		obs_properties_t properties;
 
-		properties = info->properties();
+		properties = info->get_properties();
 		obs_properties_apply_settings(properties, defaults);
 		obs_data_release(defaults);
 		return properties;
@@ -132,9 +132,9 @@ obs_properties_t obs_get_service_properties(const char *id)
 
 obs_properties_t obs_service_properties(obs_service_t service)
 {
-	if (service && service->info.properties) {
+	if (service && service->info.get_properties) {
 		obs_properties_t props;
-		props = service->info.properties();
+		props = service->info.get_properties();
 		obs_properties_apply_settings(props, service->context.settings);
 		return props;
 	}
@@ -167,12 +167,12 @@ obs_data_t obs_service_get_settings(obs_service_t service)
 	return service->context.settings;
 }
 
-signal_handler_t obs_service_signalhandler(obs_service_t service)
+signal_handler_t obs_service_get_signal_handler(obs_service_t service)
 {
 	return service ? service->context.signals : NULL;
 }
 
-proc_handler_t obs_service_prochandler(obs_service_t service)
+proc_handler_t obs_service_get_proc_handler(obs_service_t service)
 {
 	return service ? service->context.procs : NULL;
 }

@@ -21,7 +21,7 @@ struct obs_service_info {
 	/* required */
 	const char *id;
 
-	const char *(*getname)(void);
+	const char *(*get_name)(void);
 	void *(*create)(obs_data_t settings, obs_service_t service);
 	void (*destroy)(void *data);
 
@@ -31,9 +31,9 @@ struct obs_service_info {
 
 	void (*update)(void *data, obs_data_t settings);
 
-	void (*defaults)(obs_data_t settings);
+	void (*get_defaults)(obs_data_t settings);
 
-	obs_properties_t (*properties)(void);
+	obs_properties_t (*get_properties)(void);
 
 	/**
 	 * Called when getting ready to start up an output, before the encoders

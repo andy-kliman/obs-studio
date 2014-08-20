@@ -35,7 +35,7 @@ struct xshm_data {
 	int_fast32_t width, height;
 
 	xshm_t *xshm;
-	texture_t texture;
+	gs_texture_t texture;
 
 	bool show_cursor;
 	xcursor_t *cursor;
@@ -50,14 +50,14 @@ struct xshm_data {
  */
 static void xshm_resize_texture(struct xshm_data *data)
 {
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 
 	if (data->texture)
-		texture_destroy(data->texture);
-	data->texture = gs_create_texture(data->width, data->height,
+		gs_texture_destroy(data->texture);
+	data->texture = gs_texture_create(data->width, data->height,
 		GS_BGRA, 1, NULL, GS_DYNAMIC);
 
-	gs_leavecontext();
+	obs_leave_graphics();
 }
 
 /**
@@ -70,7 +70,7 @@ static int_fast32_t xshm_update_geometry(struct xshm_data *data,
 {
 	int_fast32_t old_width = data->width;
 	int_fast32_t old_height = data->height;
-	int_fast32_t screen = obs_data_getint(settings, "screen");
+	int_fast32_t screen = obs_data_get_int(settings, "screen");
 
 	if (data->use_xinerama) {
 		if (xinerama_screen_geo(data->dpy, screen,
@@ -120,7 +120,7 @@ static void xshm_update(void *vptr, obs_data_t settings)
 {
 	XSHM_DATA(vptr);
 
-	data->show_cursor = obs_data_getbool(settings, "show_cursor");
+	data->show_cursor = obs_data_get_bool(settings, "show_cursor");
 
 	if (data->xshm)
 		xshm_detach(data->xshm);
@@ -147,7 +147,7 @@ static void xshm_update(void *vptr, obs_data_t settings)
 static void xshm_defaults(obs_data_t defaults)
 {
 	obs_data_set_default_int(defaults, "screen", 0);
-	obs_data_setbool(defaults, "show_cursor", true);
+	obs_data_set_default_bool(defaults, "show_cursor", true);
 }
 
 /**
@@ -183,14 +183,14 @@ static void xshm_destroy(void *vptr)
 	if (!data)
 		return;
 
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 
 	if (data->texture)
-		texture_destroy(data->texture);
+		gs_texture_destroy(data->texture);
 	if (data->cursor)
 		xcursor_destroy(data->cursor);
 
-	gs_leavecontext();
+	obs_leave_graphics();
 
 	if (data->xshm)
 		xshm_detach(data->xshm);
@@ -222,9 +222,9 @@ static void *xshm_create(obs_data_t settings, obs_source_t source)
 
 	data->use_xinerama = xinerama_is_active(data->dpy) ? true : false;
 
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 	data->cursor = xcursor_init(data->dpy);
-	gs_leavecontext();
+	obs_leave_graphics();
 
 	xshm_update(data, settings);
 
@@ -245,30 +245,30 @@ static void xshm_video_tick(void *vptr, float seconds)
 	if (!data->xshm)
 		return;
 
-	gs_entercontext(obs_graphics());
+	obs_enter_graphics();
 
 	XShmGetImage(data->dpy, XRootWindowOfScreen(data->screen),
 		data->xshm->image, data->x_org, data->y_org, AllPlanes);
-	texture_setimage(data->texture, (void *) data->xshm->image->data,
+	gs_texture_set_image(data->texture, (void *) data->xshm->image->data,
 		data->width * 4, false);
 
 	xcursor_tick(data->cursor);
 
-	gs_leavecontext();
+	obs_leave_graphics();
 }
 
 /**
  * Render the capture data
  */
-static void xshm_video_render(void *vptr, effect_t effect)
+static void xshm_video_render(void *vptr, gs_effect_t effect)
 {
 	XSHM_DATA(vptr);
 
 	if (!data->xshm)
 		return;
 
-	eparam_t image = effect_getparambyname(effect, "image");
-	effect_settexture(image, data->texture);
+	gs_eparam_t image = gs_effect_get_param_by_name(effect, "image");
+	gs_effect_set_texture(image, data->texture);
 
 	gs_enable_blending(false);
 	gs_draw_sprite(data->texture, 0, 0, 0);
@@ -298,17 +298,17 @@ static uint32_t xshm_getheight(void *vptr)
 }
 
 struct obs_source_info xshm_input = {
-	.id           = "xshm_input",
-	.type         = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_VIDEO,
-	.getname      = xshm_getname,
-	.create       = xshm_create,
-	.destroy      = xshm_destroy,
-	.update       = xshm_update,
-	.defaults     = xshm_defaults,
-	.properties   = xshm_properties,
-	.video_tick   = xshm_video_tick,
-	.video_render = xshm_video_render,
-	.getwidth     = xshm_getwidth,
-	.getheight    = xshm_getheight
+	.id             = "xshm_input",
+	.type           = OBS_SOURCE_TYPE_INPUT,
+	.output_flags   = OBS_SOURCE_VIDEO,
+	.get_name       = xshm_getname,
+	.create         = xshm_create,
+	.destroy        = xshm_destroy,
+	.update         = xshm_update,
+	.get_defaults   = xshm_defaults,
+	.get_properties = xshm_properties,
+	.video_tick     = xshm_video_tick,
+	.video_render   = xshm_video_render,
+	.get_width      = xshm_getwidth,
+	.get_height     = xshm_getheight
 };

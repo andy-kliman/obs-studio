@@ -24,6 +24,13 @@
 #include <inttypes.h>
 #include "flv-mux.h"
 
+#define do_log(level, format, ...) \
+	blog(level, "[flv output: '%s'] " format, \
+			obs_output_get_name(stream->output), ##__VA_ARGS__)
+
+#define warn(format, ...)  do_log(LOG_WARNING, format, ##__VA_ARGS__)
+#define info(format, ...)  do_log(LOG_INFO,    format, ##__VA_ARGS__)
+
 struct flv_output {
 	obs_output_t output;
 	struct dstr  path;
@@ -71,6 +78,8 @@ static void flv_output_stop(void *data)
 		fclose(stream->file);
 		obs_output_end_data_capture(stream->output);
 		stream->active = false;
+
+		info("FLV file output complete");
 	}
 }
 
@@ -155,14 +164,13 @@ static bool flv_output_start(void *data)
 
 	/* get path */
 	settings = obs_output_get_settings(stream->output);
-	path = obs_data_getstring(settings, "path");
+	path = obs_data_get_string(settings, "path");
 	dstr_copy(&stream->path, path);
 	obs_data_release(settings);
 
 	stream->file = os_fopen(stream->path.array, "wb");
 	if (!stream->file) {
-		blog(LOG_WARNING, "Unable to open FLV file '%s'",
-				stream->path.array);
+		warn("Unable to open FLV file '%s'", stream->path.array);
 		return false;
 	}
 
@@ -171,6 +179,7 @@ static bool flv_output_start(void *data)
 	write_headers(stream);
 	obs_output_begin_data_capture(stream->output, 0);
 
+	info("Writing FLV file '%s'...", stream->path.array);
 	return true;
 }
 
@@ -201,11 +210,11 @@ static obs_properties_t flv_output_properties(void)
 struct obs_output_info flv_output_info = {
 	.id             = "flv_output",
 	.flags          = OBS_OUTPUT_AV | OBS_OUTPUT_ENCODED,
-	.getname        = flv_output_getname,
+	.get_name       = flv_output_getname,
 	.create         = flv_output_create,
 	.destroy        = flv_output_destroy,
 	.start          = flv_output_start,
 	.stop           = flv_output_stop,
 	.encoded_packet = flv_output_data,
-	.properties     = flv_output_properties
+	.get_properties = flv_output_properties
 };

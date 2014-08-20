@@ -28,7 +28,7 @@
 
 #define do_log(level, format, ...) \
 	blog(level, "[rtmp stream: '%s'] " format, \
-			obs_output_getname(stream->output), ##__VA_ARGS__)
+			obs_output_get_name(stream->output), ##__VA_ARGS__)
 
 #define warn(format, ...)  do_log(LOG_WARNING, format, ##__VA_ARGS__)
 #define info(format, ...)  do_log(LOG_INFO,    format, ##__VA_ARGS__)
@@ -166,7 +166,7 @@ static inline void set_rtmp_str(AVal *val, const char *str)
 
 static inline void set_rtmp_dstr(AVal *val, struct dstr *str)
 {
-	bool valid  = !dstr_isempty(str);
+	bool valid  = !dstr_is_empty(str);
 	val->av_val = valid ? str->array    : NULL;
 	val->av_len = valid ? (int)str->len : 0;
 }
@@ -359,12 +359,12 @@ static int init_send(struct rtmp_stream *stream)
 
 static int try_connect(struct rtmp_stream *stream)
 {
-	if (dstr_isempty(&stream->path)) {
+	if (dstr_is_empty(&stream->path)) {
 		warn("URL is empty");
 		return OBS_OUTPUT_BAD_PATH;
 	}
 
-	if (dstr_isempty(&stream->key)) {
+	if (dstr_is_empty(&stream->key)) {
 		warn("Stream key is empty");
 		return OBS_OUTPUT_BAD_PATH;
 	}
@@ -434,7 +434,7 @@ static bool rtmp_stream_start(void *data)
 	dstr_copy(&stream->username, obs_service_get_username(service));
 	dstr_copy(&stream->password, obs_service_get_password(service));
 	stream->drop_threshold_usec =
-		(int64_t)obs_data_getint(settings, OPT_DROP_THRESHOLD) * 1000;
+		(int64_t)obs_data_get_int(settings, OPT_DROP_THRESHOLD) * 1000;
 	obs_data_release(settings);
 
 	return pthread_create(&stream->connect_thread, NULL, connect_thread,
@@ -588,18 +588,18 @@ static int rtmp_stream_dropped_frames(void *data)
 }
 
 struct obs_output_info rtmp_output_info = {
-	.id             = "rtmp_output",
-	.flags          = OBS_OUTPUT_AV |
-	                  OBS_OUTPUT_ENCODED |
-	                  OBS_OUTPUT_SERVICE,
-	.getname        = rtmp_stream_getname,
-	.create         = rtmp_stream_create,
-	.destroy        = rtmp_stream_destroy,
-	.start          = rtmp_stream_start,
-	.stop           = rtmp_stream_stop,
-	.encoded_packet = rtmp_stream_data,
-	.defaults       = rtmp_stream_defaults,
-	.properties     = rtmp_stream_properties,
-	.total_bytes    = rtmp_stream_total_bytes_sent,
-	.dropped_frames = rtmp_stream_dropped_frames
-};
+	.id                 = "rtmp_output",
+	.flags              = OBS_OUTPUT_AV |
+	                      OBS_OUTPUT_ENCODED |
+	                      OBS_OUTPUT_SERVICE,
+	.get_name           = rtmp_stream_getname,
+	.create             = rtmp_stream_create,
+	.destroy            = rtmp_stream_destroy,
+	.start              = rtmp_stream_start,
+	.stop               = rtmp_stream_stop,
+	.encoded_packet     = rtmp_stream_data,
+	.get_defaults       = rtmp_stream_defaults,
+	.get_properties     = rtmp_stream_properties,
+	.get_total_bytes    = rtmp_stream_total_bytes_sent,
+	.get_dropped_frames = rtmp_stream_dropped_frames
+};         

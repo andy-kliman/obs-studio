@@ -41,7 +41,7 @@ static void *sinewave_thread(void *pdata)
 			bytes[i] = (uint8_t)((wave+1.0)*0.5 * 255.0);
 		}
 
-		struct source_audio data;
+		struct obs_source_audio data;
 		data.data[0] = bytes;
 		data.frames = 480;
 		data.speakers = SPEAKERS_MONO;
@@ -104,7 +104,7 @@ struct obs_source_info test_sinewave = {
 	.id           = "test_sinewave",
 	.type         = OBS_SOURCE_TYPE_INPUT,
 	.output_flags = OBS_SOURCE_AUDIO,
-	.getname      = sinewave_getname,
+	.get_name     = sinewave_getname,
 	.create       = sinewave_create,
 	.destroy      = sinewave_destroy,
 };

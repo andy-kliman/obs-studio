@@ -33,14 +33,12 @@ OBSBasicProperties::OBSBasicProperties(QWidget *parent, OBSSource source_)
 	  resizeTimer   (0),
 	  ui            (new Ui::OBSBasicProperties),
 	  source        (source_),
-	  removedSignal (obs_source_signalhandler(source), "remove",
+	  removedSignal (obs_source_get_signal_handler(source), "remove",
 	                 OBSBasicProperties::SourceRemoved, this)
 {
-	setAttribute(Qt::WA_DeleteOnClose);
-
 	ui->setupUi(this);
 
-	OBSData settings = obs_source_getsettings(source);
+	OBSData settings = obs_source_get_settings(source);
 	obs_data_release(settings);
 
 	view = new OBSPropertiesView(settings,
@@ -58,7 +56,7 @@ OBSBasicProperties::OBSBasicProperties(QWidget *parent, OBSSource source_)
 		resizeTimer = startTimer(100);
 	});
 
-	const char *name = obs_source_getname(source);
+	const char *name = obs_source_get_name(source);
 	setWindowTitle(QTStr("Basic.PropertiesWindow").arg(QT_UTF8(name)));
 }
 
@@ -77,8 +75,8 @@ void OBSBasicProperties::DrawPreview(void *data, uint32_t cx, uint32_t cy)
 	if (!window->source)
 		return;
 
-	uint32_t sourceCX = max(obs_source_getwidth(window->source), 1u);
-	uint32_t sourceCY = max(obs_source_getheight(window->source), 1u);
+	uint32_t sourceCX = max(obs_source_get_width(window->source), 1u);
+	uint32_t sourceCY = max(obs_source_get_height(window->source), 1u);
 
 	int   x, y;
 	int   newCX, newCY;
@@ -93,7 +91,7 @@ void OBSBasicProperties::DrawPreview(void *data, uint32_t cx, uint32_t cy)
 	gs_projection_push();
 	gs_ortho(0.0f, float(sourceCX), 0.0f, float(sourceCY),
 			-100.0f, 100.0f);
-	gs_setviewport(x, y, newCX, newCY);
+	gs_set_viewport(x, y, newCX, newCY);
 
 	obs_source_video_render(window->source);
 

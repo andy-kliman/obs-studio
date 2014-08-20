@@ -66,9 +66,6 @@ endif()
 if(NOT INSTALLER_RUN)
 	add_subdirectory(deps)
 
-	add_definitions(-DHAVE_CONFIG_H=1)
-	include_directories("${CMAKE_BINARY_DIR}/config")
-
 	add_subdirectory(libobs)
 
 	if(WIN32)
@@ -86,4 +83,4 @@ else()
 	obs_generate_multiarch_installer()
 endif()
 
-obs_install_additional()
+include(CopyMSVCBins)
